@@ -1,6 +1,6 @@
 import numpy as np
 import os
-import sys
+import argparse
 import random
 import torch
 import torchvision
@@ -75,9 +75,18 @@ def generate_dataset(dir_path, num_clients, niid, balance, partition):
         statistic, niid, balance, partition)
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Generate MNIST federated dataset splits.")
+    parser.add_argument("mode", choices=["iid", "noniid"], help="Data split mode.")
+    parser.add_argument("balance", nargs="?", default="-", choices=["-", "balance"],  help="Use 'balance' for balanced split or '-' for unbalanced.")
+    parser.add_argument("partition", nargs="?", default="-", choices=["-", "pat", "dir", "exdir"], help="Partition strategy for noniid mode. Use '-' for default.")
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
-    niid = True if sys.argv[1] == "noniid" else False
-    balance = True if sys.argv[2] and sys.argv[2] == "balance" else False
-    partition = sys.argv[3] if sys.argv[3] != "-" else None
+    args = parse_args()
+    niid = args.mode == "noniid"
+    balance = args.balance == "balance"
+    partition = None if args.partition == "-" else args.partition
 
     generate_dataset(dir_path, num_clients, niid, balance, partition)
