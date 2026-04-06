@@ -11,7 +11,7 @@ from dataset_utils import check, separate_data, split_data, save_file
 random.seed(1)
 np.random.seed(1)
 num_clients = 20
-dir_path = "Cifar10/"
+dir_path = "/data/Cifar10/"
 
 
 # Allocate data to users
@@ -72,7 +72,7 @@ def generate_dataset(dir_path, num_clients, niid, balance, partition):
 
 if __name__ == "__main__":
     niid = True if sys.argv[1] == "noniid" else False
-    balance = True if sys.argv[2] == "balance" else False
+    balance = True if sys.argv[2] and sys.argv[2] == "balance" else False
     partition = sys.argv[3] if sys.argv[3] != "-" else None
 
     generate_dataset(dir_path, num_clients, niid, balance, partition)

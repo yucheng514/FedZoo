@@ -3,6 +3,8 @@ __pycache__/
 *.py[codz]
 *$py.class
 .idea
+/dataset/data/*
+!/dataset/data/.gitkeep
 # C extensions
 *.so
 /results
