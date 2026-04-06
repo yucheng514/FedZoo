@@ -56,6 +56,16 @@ if __name__ == "__main__":
     parser.add_argument('-ls', "--local_epochs", type=int, default=1, help="Multiple update steps in one local epoch.")
     parser.add_argument('-lbs', "--batch_size", type=int, default=10)
     parser.add_argument('-fs', "--few_shot", type=int, default=0)
+    parser.add_argument('-tsr', "--train_slow_rate", type=float, default=0.0, help="The rate for slow clients when training locally")
+    parser.add_argument('-ssr', "--send_slow_rate", type=float, default=0.0, help="The rate for slow clients when sending global model")
+    parser.add_argument('-sfn', "--save_folder_name", type=str, default='items')
+    parser.add_argument('-ldg', "--learning_rate_decay_gamma", type=float, default=0.99)
+    parser.add_argument('-ld', "--learning_rate_decay", type=bool, default=False)
+    parser.add_argument('-cdr', "--client_drop_rate", type=float, default=0.0, help="Rate for clients that train but drop out")
+    parser.add_argument('-ab', "--auto_break", type=bool, default=False)
+    parser.add_argument('-tc', "--top_cnt", type=int, default=100, help="For auto_break")
+    parser.add_argument('-go', "--goal", type=str, default="test", help="The goal for this experiment")
+    parser.add_argument('-nnc', "--num_new_clients", type=int, default=0)
 
 
     args = parser.parse_args()

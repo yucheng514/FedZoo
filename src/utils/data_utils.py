@@ -6,9 +6,9 @@ from collections import defaultdict
 
 def read_data(dataset, idx, is_train=True):
     if is_train:
-        data_dir = os.path.join('../../dataset', dataset, 'train/')
+        data_dir = os.path.join('./dataset/data', dataset, 'train/')
     else:
-        data_dir = os.path.join('../../dataset', dataset, 'test/')
+        data_dir = os.path.join('./dataset/data', dataset, 'test/')
 
     file = data_dir + str(idx) + '.npz'
     with open(file, 'rb') as f:

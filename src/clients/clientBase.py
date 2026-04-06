@@ -57,15 +57,15 @@ class Client(object):
         train_data = read_client_data(self.dataset, self.id, is_train=True, few_shot=self.few_shot)
         return DataLoader(train_data, batch_size, drop_last=True, shuffle=True)
 
-    # def load_test_data(self, batch_size=None):
-    #     if batch_size == None:
-    #         batch_size = self.batch_size
-    #     test_data = read_client_data(self.dataset, self.id, is_train=False, few_shot=self.few_shot)
-    #     return DataLoader(test_data, batch_size, drop_last=False, shuffle=True)
-#
-#     def set_parameters(self, model):
-#         for new_param, old_param in zip(model.parameters(), self.model.parameters()):
-#             old_param.data = new_param.data.clone()
+    def load_test_data(self, batch_size=None):
+        if batch_size == None:
+            batch_size = self.batch_size
+        test_data = read_client_data(self.dataset, self.id, is_train=False, few_shot=self.few_shot)
+        return DataLoader(test_data, batch_size, drop_last=False, shuffle=True)
+
+    def set_parameters(self, model):
+        for new_param, old_param in zip(model.parameters(), self.model.parameters()):
+            old_param.data = new_param.data.clone()
 #
 #     def clone_model(self, model, target):
 #         for param, target_param in zip(model.parameters(), target.parameters()):
