@@ -1,10 +1,10 @@
 import torch
 import os
-# import numpy as np
+import numpy as np
 # import h5py
 import copy
-# import time
-# import random
+import time
+import random
 from src.utils.data_utils import read_client_data
 # from utils.dlg import DLG
 #
@@ -24,8 +24,8 @@ class Server(object):
         self.num_clients = args.num_clients
         self.join_ratio = args.join_ratio
 #         self.random_join_ratio = args.random_join_ratio
-#         self.num_join_clients = int(self.num_clients * self.join_ratio)
-#         self.current_num_join_clients = self.num_join_clients
+        self.num_join_clients = int(self.num_clients * self.join_ratio)
+        self.current_num_join_clients = self.num_join_clients
 #         self.few_shot = args.few_shot
         self.algorithm = args.algorithm
 #         self.time_select = args.time_select
@@ -49,7 +49,7 @@ class Server(object):
         self.rs_train_loss = []
 
         self.times = times
-#         self.eval_gap = args.eval_gap
+        self.eval_gap = args.eval_gap
 #         self.client_drop_rate = args.client_drop_rate
 #         self.train_slow_rate = args.train_slow_rate
 #         self.send_slow_rate = args.send_slow_rate
@@ -91,15 +91,15 @@ class Server(object):
 #         self.send_slow_clients = self.select_slow_clients(
 #             self.send_slow_rate)
 #
-#     def select_clients(self):
-#         if self.random_join_ratio:
-#             self.current_num_join_clients = \
-#             np.random.choice(range(self.num_join_clients, self.num_clients + 1), 1, replace=False)[0]
-#         else:
-#             self.current_num_join_clients = self.num_join_clients
-#         selected_clients = list(np.random.choice(self.clients, self.current_num_join_clients, replace=False))
-#
-#         return selected_clients
+    def select_clients(self):
+        if self.random_join_ratio:
+            self.current_num_join_clients = \
+            np.random.choice(range(self.num_join_clients, self.num_clients + 1), 1, replace=False)[0]
+        else:
+            self.current_num_join_clients = self.num_join_clients
+        selected_clients = list(np.random.choice(self.clients, self.current_num_join_clients, replace=False))
+
+        return selected_clients
 #
 #     def send_models(self):
 #         assert (len(self.clients) > 0)
@@ -112,30 +112,30 @@ class Server(object):
 #             client.send_time_cost['num_rounds'] += 1
 #             client.send_time_cost['total_cost'] += 2 * (time.time() - start_time)
 #
-#     def receive_models(self):
-#         assert (len(self.selected_clients) > 0)
-#
-#         active_clients = random.sample(
-#             self.selected_clients, int((1 - self.client_drop_rate) * self.current_num_join_clients))
-#
-#         self.uploaded_ids = []
-#         self.uploaded_weights = []
-#         self.uploaded_models = []
-#         tot_samples = 0
-#         for client in active_clients:
-#             try:
-#                 client_time_cost = client.train_time_cost['total_cost'] / client.train_time_cost['num_rounds'] + \
-#                                    client.send_time_cost['total_cost'] / client.send_time_cost['num_rounds']
-#             except ZeroDivisionError:
-#                 client_time_cost = 0
-#             if client_time_cost <= self.time_threthold:
-#                 tot_samples += client.train_samples
-#                 self.uploaded_ids.append(client.id)
-#                 self.uploaded_weights.append(client.train_samples)
-#                 self.uploaded_models.append(client.model)
-#         for i, w in enumerate(self.uploaded_weights):
-#             self.uploaded_weights[i] = w / tot_samples
-#
+    def receive_models(self):
+        assert (len(self.selected_clients) > 0)
+
+        active_clients = random.sample(
+            self.selected_clients, int((1 - self.client_drop_rate) * self.current_num_join_clients))
+
+        self.uploaded_ids = []
+        self.uploaded_weights = []
+        self.uploaded_models = []
+        tot_samples = 0
+        for client in active_clients:
+            try:
+                client_time_cost = client.train_time_cost['total_cost'] / client.train_time_cost['num_rounds'] + \
+                                   client.send_time_cost['total_cost'] / client.send_time_cost['num_rounds']
+            except ZeroDivisionError:
+                client_time_cost = 0
+            if client_time_cost <= self.time_threthold:
+                tot_samples += client.train_samples
+                self.uploaded_ids.append(client.id)
+                self.uploaded_weights.append(client.train_samples)
+                self.uploaded_models.append(client.model)
+        for i, w in enumerate(self.uploaded_weights):
+            self.uploaded_weights[i] = w / tot_samples
+
 #     def aggregate_parameters(self):
 #         assert (len(self.uploaded_models) > 0)
 #
@@ -209,49 +209,49 @@ class Server(object):
 #         ids = [c.id for c in self.clients]
 #
 #         return ids, num_samples, tot_correct, tot_auc
-#
-#     def train_metrics(self):
-#         if self.eval_new_clients and self.num_new_clients > 0:
-#             return [0], [1], [0]
-#
-#         num_samples = []
-#         losses = []
-#         for c in self.clients:
-#             cl, ns = c.train_metrics()
-#             num_samples.append(ns)
-#             losses.append(cl * 1.0)
-#
-#         ids = [c.id for c in self.clients]
-#
-#         return ids, num_samples, losses
-#
-#     # evaluate selected clients
-#     def evaluate(self, acc=None, loss=None):
-#         stats = self.test_metrics()
-#         stats_train = self.train_metrics()
-#
-#         test_acc = sum(stats[2]) * 1.0 / sum(stats[1])
-#         test_auc = sum(stats[3]) * 1.0 / sum(stats[1])
-#         train_loss = sum(stats_train[2]) * 1.0 / sum(stats_train[1])
-#         accs = [a / n for a, n in zip(stats[2], stats[1])]
-#         aucs = [a / n for a, n in zip(stats[3], stats[1])]
-#
-#         if acc == None:
-#             self.rs_test_acc.append(test_acc)
-#         else:
-#             acc.append(test_acc)
-#
-#         if loss == None:
-#             self.rs_train_loss.append(train_loss)
-#         else:
-#             loss.append(train_loss)
-#
-#         print("Averaged Train Loss: {:.4f}".format(train_loss))
-#         print("Averaged Test Accuracy: {:.4f}".format(test_acc))
-#         print("Averaged Test AUC: {:.4f}".format(test_auc))
-#         # self.print_(test_acc, train_acc, train_loss)
-#         print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
-#         print("Std Test AUC: {:.4f}".format(np.std(aucs)))
+
+    def train_metrics(self):
+        if self.eval_new_clients and self.num_new_clients > 0:
+            return [0], [1], [0]
+
+        num_samples = []
+        losses = []
+        for c in self.clients:
+            cl, ns = c.train_metrics()
+            num_samples.append(ns)
+            losses.append(cl * 1.0)
+
+        ids = [c.id for c in self.clients]
+
+        return ids, num_samples, losses
+
+    # evaluate selected clients
+    def evaluate(self, acc=None, loss=None):
+        stats = self.test_metrics()
+        stats_train = self.train_metrics()
+
+        test_acc = sum(stats[2]) * 1.0 / sum(stats[1])
+        test_auc = sum(stats[3]) * 1.0 / sum(stats[1])
+        train_loss = sum(stats_train[2]) * 1.0 / sum(stats_train[1])
+        accs = [a / n for a, n in zip(stats[2], stats[1])]
+        aucs = [a / n for a, n in zip(stats[3], stats[1])]
+
+        if acc == None:
+            self.rs_test_acc.append(test_acc)
+        else:
+            acc.append(test_acc)
+
+        if loss == None:
+            self.rs_train_loss.append(train_loss)
+        else:
+            loss.append(train_loss)
+
+        print("Averaged Train Loss: {:.4f}".format(train_loss))
+        print("Averaged Test Accuracy: {:.4f}".format(test_acc))
+        print("Averaged Test AUC: {:.4f}".format(test_auc))
+        # self.print_(test_acc, train_acc, train_loss)
+        print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
+        print("Std Test AUC: {:.4f}".format(np.std(aucs)))
 #
 #     def print_(self, test_acc, test_auc, train_loss):
 #         print("Average Test Accuracy: {:.4f}".format(test_acc))
@@ -356,16 +356,16 @@ class Server(object):
 #                     opt.step()
 #
 #     # evaluating on new clients
-#     def test_metrics_new_clients(self):
-#         num_samples = []
-#         tot_correct = []
-#         tot_auc = []
-#         for c in self.new_clients:
-#             ct, ns, auc = c.test_metrics()
-#             tot_correct.append(ct * 1.0)
-#             tot_auc.append(auc * ns)
-#             num_samples.append(ns)
-#
-#         ids = [c.id for c in self.new_clients]
-#
-#         return ids, num_samples, tot_correct, tot_auc
+    def test_metrics_new_clients(self):
+        num_samples = []
+        tot_correct = []
+        tot_auc = []
+        for c in self.new_clients:
+            ct, ns, auc = c.test_metrics()
+            tot_correct.append(ct * 1.0)
+            tot_auc.append(auc * ns)
+            num_samples.append(ns)
+
+        ids = [c.id for c in self.new_clients]
+
+        return ids, num_samples, tot_correct, tot_auc

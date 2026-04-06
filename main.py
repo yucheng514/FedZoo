@@ -32,6 +32,10 @@ def run(args):
             # args.model = BaseHeadSplit(args.model, args.head)
             server = FedAvg(args, i)
 
+        server.train()
+
+        time_list.append(time.time() - start)
+
 
 if __name__ == "__main__":
     total_start = time.time()
@@ -45,8 +49,13 @@ if __name__ == "__main__":
     parser.add_argument('-did', "--device_id", type=str, default="0")
     parser.add_argument('-jr', "--join_ratio", type=float, default=1.0, help="Ratio of clients per round")
     parser.add_argument('-gr', "--global_rounds", type=int, default=500)
-    parser.add_argument('-ls', "--local_epochs", type=int, default=1, help="Multiple update steps in one local epoch.")
     parser.add_argument('-nc', "--num_clients", type=int, default=20, help="Total number of clients")
+    parser.add_argument('-eg', "--eval_gap", type=int, default=1, help="Rounds gap for evaluation")
+    parser.add_argument('-tth', "--time_threthold", type=float, default=10000, help="The threthold for droping slow clients")
+    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005, help="Local learning rate")
+    parser.add_argument('-ls', "--local_epochs", type=int, default=1, help="Multiple update steps in one local epoch.")
+    parser.add_argument('-lbs', "--batch_size", type=int, default=10)
+    parser.add_argument('-fs', "--few_shot", type=int, default=0)
 
 
     args = parser.parse_args()
