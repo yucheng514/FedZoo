@@ -34,7 +34,7 @@ class clientAVG(Client):
                 loss.backward()
                 self.optimizer.step()
 
-        self.model.cpu()
+        # self.model.cpu()
 
         if self.learning_rate_decay:
             self.learning_rate_scheduler.step()
