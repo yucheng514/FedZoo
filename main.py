@@ -38,6 +38,8 @@ def run_mcfl(args):
 
     set_seed(args.mcfl_seed)
 
+    clients = make_mcfl_clients(args)
+
     if args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and args.dataset in {"MNIST", "Cifar10"}):
         if "MNIST" in args.dataset:
             base_model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
@@ -61,7 +63,6 @@ def run_mcfl(args):
         recluster_every=args.mcfl_recluster_every,
     )
 
-    clients = make_mcfl_clients(args)
     server.assign_initial_clusters(clients)
 
     for rnd in range(args.global_rounds):

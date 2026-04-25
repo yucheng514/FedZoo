@@ -23,6 +23,29 @@ def _stack_image_samples(samples):
     return TensorDataset(x_tensor, y_tensor)
 
 
+def _stack_samples_for_backbone(samples, use_cnn):
+    xs, ys = [], []
+    for x, y in samples:
+        if isinstance(x, (tuple, list)):
+            return None, None
+
+        x = x.float()
+        if use_cnn:
+            if x.ndim == 2:
+                x = x.unsqueeze(0)
+            elif x.ndim == 1:
+                raise ValueError("CNN backbone requires image-like tensors, but got 1D features.")
+        else:
+            x = x.reshape(-1)
+
+        xs.append(x)
+        ys.append(int(y.item()) if torch.is_tensor(y) else int(y))
+
+    x_tensor = torch.stack(xs, dim=0)
+    y_tensor = torch.tensor(ys, dtype=torch.long)
+    return TensorDataset(x_tensor, y_tensor), int(x_tensor[0].numel()) if not use_cnn else int(x_tensor.shape[1] * x_tensor.shape[2] * x_tensor.shape[3])
+
+
 def _split_dataset(dataset, support_ratio, seed, min_query_size=1):
     n_samples = len(dataset)
     if n_samples < 2:
@@ -54,11 +77,17 @@ def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed):
 
 def _make_real_clients(args):
     clients = []
+    use_cnn = args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and args.dataset in IMAGE_DATASETS)
+    inferred_input_dim = None
+
     for cid in range(args.num_clients):
         train_samples = read_client_data(args.dataset, cid, is_train=True, few_shot=args.few_shot)
-        dataset = _stack_image_samples(train_samples)
+        dataset, feature_dim = _stack_samples_for_backbone(train_samples, use_cnn=use_cnn)
         if dataset is None:
             raise ValueError(f"Dataset {args.dataset} is not image-like for MCFL.")
+
+        if not use_cnn and inferred_input_dim is None:
+            inferred_input_dim = feature_dim
 
         support_loader, query_loader = _build_loaders_from_dataset(
             dataset=dataset,
@@ -76,6 +105,9 @@ def _make_real_clients(args):
                 local_epochs=args.mcfl_local_epochs,
             )
         )
+
+    if inferred_input_dim is not None:
+        args.mcfl_input_dim = inferred_input_dim
 
     return clients
 
