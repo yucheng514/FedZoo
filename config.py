@@ -59,6 +59,7 @@ def build_parser():
     parser.add_argument('--cfl_test_samples', type=int, default=10000)
     parser.add_argument('--cfl_rotation_clients', type=int, default=5)
     parser.add_argument('--cfl_rotation_degrees', type=int, default=180)
+    parser.add_argument('--cfl_momentum', type=float, default=0.9)
     parser.add_argument('--cfl_eps_1', type=float, default=0.4)
     parser.add_argument('--cfl_eps_2', type=float, default=1.6)
     parser.add_argument('--cfl_split_round', type=int, default=20)
@@ -69,7 +70,30 @@ def build_parser():
 
 
 def get_args():
-    return build_parser().parse_args()
+    args = build_parser().parse_args()
+    validate_args(args)
+    return args
+
+
+def validate_args(args):
+    required_common = [
+        "algorithm", "device", "dataset", "num_classes", "global_rounds",
+        "num_clients", "batch_size", "local_epochs", "local_learning_rate",
+    ]
+    required_by_algo = {
+        "FedAvg": ["model", "join_ratio", "eval_gap"],
+        "MCFL": ["mcfl_seed", "mcfl_backbone", "mcfl_hidden_dim", "mcfl_num_clusters"],
+        "CFL": ["cfl_seed", "cfl_split", "cfl_dirichlet_alpha", "cfl_momentum", "train_frac"],
+    }
+
+    missing = [name for name in required_common if not hasattr(args, name)]
+    missing += [name for name in required_by_algo.get(args.algorithm, []) if not hasattr(args, name)]
+
+    if missing:
+        raise ValueError(
+            f"Missing CLI args for algorithm={args.algorithm}: {sorted(set(missing))}. "
+            "Check config.build_parser() argument definitions."
+        )
 
 
 def resolve_device(args):
