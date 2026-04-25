@@ -40,6 +40,7 @@ class MCFLClient:
 
         support_loss_total = 0.0
         support_samples = 0
+        support_correct = 0
         for _ in range(local_epochs):
             for x_s, y_s in self.support_loader:
                 x_s = x_s.to(self.device)
@@ -61,11 +62,14 @@ class MCFLClient:
                     for (name, p), g in zip(params.items(), support_grads)
                 }
 
+                preds_s = torch.argmax(logits_s, dim=1)
+                support_correct += (preds_s == y_s).sum().item()
                 support_loss_total += support_loss.item() * y_s.size(0)
                 support_samples += y_s.size(0)
 
         query_loss_total = 0.0
         query_samples = 0
+        query_correct = 0
         query_loss_tensor = None
         for x_q, y_q in self.query_loader:
             x_q = x_q.to(self.device)
@@ -76,6 +80,8 @@ class MCFLClient:
 
             weighted_loss = batch_query_loss * y_q.size(0)
             query_loss_tensor = weighted_loss if query_loss_tensor is None else query_loss_tensor + weighted_loss
+            preds_q = torch.argmax(logits_q, dim=1)
+            query_correct += (preds_q == y_q).sum().item()
             query_loss_total += weighted_loss.item()
             query_samples += y_q.size(0)
 
@@ -100,8 +106,12 @@ class MCFLClient:
             "cluster_id": self.cluster_id,
             "support_loss": support_loss_total / max(support_samples, 1),
             "query_loss": query_loss_total / max(query_samples, 1),
+            "support_acc": support_correct / max(support_samples, 1),
+            "query_acc": query_correct / max(query_samples, 1),
             "support_samples": support_samples,
             "query_samples": query_samples,
+            "support_correct": support_correct,
+            "query_correct": query_correct,
         }
 
         return meta_grads, update_vec, stats

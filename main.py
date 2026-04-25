@@ -84,6 +84,10 @@ def run_mcfl(args):
 
         avg_support = sum(s["support_loss"] for s in stats) / len(stats)
         avg_query = sum(s["query_loss"] for s in stats) / len(stats)
+        total_support_samples = sum(s["support_samples"] for s in stats)
+        total_query_samples = sum(s["query_samples"] for s in stats)
+        support_acc = sum(s["support_correct"] for s in stats) / max(total_support_samples, 1)
+        query_acc = sum(s["query_correct"] for s in stats) / max(total_query_samples, 1)
 
         cluster_hist = defaultdict(int)
         for client in clients:
@@ -93,6 +97,9 @@ def run_mcfl(args):
             f"Round {rnd:03d} | "
             f"support_loss={avg_support:.4f} | "
             f"query_loss={avg_query:.4f} | "
+            f"support_acc={support_acc:.4f} | "
+            f"query_acc={query_acc:.4f} | "
+            f"acc_mean={query_acc:.4f} | "
             f"clusters={dict(cluster_hist)}"
         )
 
