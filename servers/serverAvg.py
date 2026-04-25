@@ -1,10 +1,9 @@
 import time
-from  src.clients.clientAvg import clientAVG
 # from flcore.servers.serverbase import Server
 # from threading import Thread
 #
-from src.servers.serverBase import Server
-from src.clients.clientAvg import clientAVG
+from servers.serverBase import Server
+from clients.clientAvg import clientAVG
 class FedAvg(Server):
     def __init__(self, args, times):
         super().__init__(args, times)

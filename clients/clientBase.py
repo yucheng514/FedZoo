@@ -2,11 +2,10 @@ import copy
 import torch
 import torch.nn as nn
 import numpy as np
-import os
 from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
-from src.utils.data_utils import read_client_data
+from utils.data_utils import read_client_data
 
 
 class Client(object):

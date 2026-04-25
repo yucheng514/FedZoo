@@ -2,7 +2,7 @@
 # import torch
 # import numpy as np
 import time
-from src.clients.clientBase import Client
+from clients.clientBase import Client
 
 class clientAVG(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
