@@ -70,7 +70,7 @@ class MCFLServer:
         for client, cluster_id in zip(clients, assignments):
             client.cluster_id = int(cluster_id)
 
-    def train_round(self, clients, round_idx, inner_lr=0.1, first_order=True):
+    def train_round(self, clients, round_idx, inner_lr=0.1, first_order=True, local_epochs=1):
         cluster_to_grads = defaultdict(list)
         client_update_vecs = []
         stats_list = []
@@ -81,6 +81,7 @@ class MCFLServer:
                 model,
                 inner_lr=inner_lr,
                 first_order=first_order,
+                local_epochs=local_epochs,
             )
 
             cluster_to_grads[client.cluster_id].append(meta_grads)

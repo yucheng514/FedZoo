@@ -4,7 +4,7 @@ from collections import defaultdict
 import torch
 
 from config import get_args, resolve_device
-from dataset.mcfl_synthetic import make_synthetic_clients
+from dataset.mcfl_synthetic import make_mcfl_clients
 from models.mcfl_models import MCFLMLPClassifier
 from servers.serverMCFL import MCFLServer
 from utils.mcfl_utils import set_seed
@@ -22,7 +22,6 @@ def run_fedavg(args):
     for i in range(0, 1):
         print("Creating server and clients ...")
         start = time.time()
-        server = None
         if model_str == "CNN":
             if "MNIST" in args.dataset:
                 args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
@@ -30,20 +29,28 @@ def run_fedavg(args):
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
 
         server = FedAvg(args, i)
-        if server is None:
-            raise RuntimeError("Failed to initialize FedAvg server.")
         server.train()
         time_list.append(time.time() - start)
 
 
 def run_mcfl(args):
+    from models.models import FedAvgCNN
+
     set_seed(args.mcfl_seed)
 
-    base_model = MCFLMLPClassifier(
-        in_dim=args.mcfl_input_dim,
-        hidden_dim=args.mcfl_hidden_dim,
-        num_classes=args.num_classes,
-    )
+    if args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and args.dataset in {"MNIST", "Cifar10"}):
+        if "MNIST" in args.dataset:
+            base_model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
+        elif "Cifar10" in args.dataset:
+            base_model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)
+        else:
+            raise ValueError(f"Unsupported image dataset for MCFL CNN backbone: {args.dataset}")
+    else:
+        base_model = MCFLMLPClassifier(
+            in_dim=args.mcfl_input_dim,
+            hidden_dim=args.mcfl_hidden_dim,
+            num_classes=args.num_classes,
+        )
 
     server = MCFLServer(
         global_model=base_model,
@@ -54,7 +61,7 @@ def run_mcfl(args):
         recluster_every=args.mcfl_recluster_every,
     )
 
-    clients = make_synthetic_clients(args)
+    clients = make_mcfl_clients(args)
     server.assign_initial_clusters(clients)
 
     for rnd in range(args.global_rounds):
@@ -63,6 +70,7 @@ def run_mcfl(args):
             round_idx=rnd,
             inner_lr=args.mcfl_inner_lr,
             first_order=args.mcfl_first_order,
+            local_epochs=args.mcfl_local_epochs,
         )
 
         avg_support = sum(s["support_loss"] for s in stats) / len(stats)

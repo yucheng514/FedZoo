@@ -5,7 +5,7 @@ This repository now contains both the original FedAvg pipeline and an integrated
 ## Algorithms
 
 - `FedAvg` (existing implementation)
-- `MCFL` (integrated from `mcfl_minimal_project` without overwriting original modules)
+- `MCFL` (formalized version with multi-batch local adaptation, real-data fallback, and stronger backbone selection)
 
 ## MCFL module mapping
 
@@ -20,5 +20,5 @@ This repository now contains both the original FedAvg pipeline and an integrated
 
 ```bash
 python main.py -al FedAvg
-python main.py -al MCFL -gr 10 -nc 12 -ncl 2 --mcfl_num_clusters 3
+python main.py -al MCFL -gr 10 -nc 20 -ncl 10 --mcfl_backbone auto
 ```

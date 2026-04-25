@@ -34,16 +34,19 @@ def build_parser():
 
     # MCFL-related arguments
     parser.add_argument('--mcfl_seed', type=int, default=42)
-    parser.add_argument('--mcfl_input_dim', type=int, default=20)
-    parser.add_argument('--mcfl_samples_per_client', type=int, default=64)
-    parser.add_argument('--mcfl_true_groups', type=int, default=3)
-    parser.add_argument('--mcfl_hidden_dim', type=int, default=64)
-    parser.add_argument('--mcfl_num_clusters', type=int, default=3)
-    parser.add_argument('--mcfl_encoder_embed_dim', type=int, default=16)
-    parser.add_argument('--mcfl_outer_lr', type=float, default=1e-2)
-    parser.add_argument('--mcfl_inner_lr', type=float, default=0.1)
+    parser.add_argument('--mcfl_backbone', type=str, default='auto', choices=['auto', 'mlp', 'cnn'])
+    parser.add_argument('--mcfl_input_dim', type=int, default=64, help='Used by the synthetic fallback benchmark.')
+    parser.add_argument('--mcfl_samples_per_client', type=int, default=512, help='Used by the synthetic fallback benchmark.')
+    parser.add_argument('--mcfl_true_groups', type=int, default=4, help='Used by the synthetic fallback benchmark.')
+    parser.add_argument('--mcfl_hidden_dim', type=int, default=256, help='Used by the synthetic fallback benchmark.')
+    parser.add_argument('--mcfl_num_clusters', type=int, default=4)
+    parser.add_argument('--mcfl_encoder_embed_dim', type=int, default=64)
+    parser.add_argument('--mcfl_outer_lr', type=float, default=1e-3)
+    parser.add_argument('--mcfl_inner_lr', type=float, default=1e-2)
+    parser.add_argument('--mcfl_local_epochs', type=int, default=5)
+    parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
-    parser.add_argument('--mcfl_recluster_every', type=int, default=1)
+    parser.add_argument('--mcfl_recluster_every', type=int, default=5)
     return parser
 
 

@@ -1,38 +1,70 @@
+from pathlib import Path
+
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from clients.clientMCFL import MCFLClient
+from utils.data_utils import read_client_data
 
 
-# Build non-IID synthetic support/query datasets for each MCFL client.
-def make_synthetic_clients(args):
+IMAGE_DATASETS = {"MNIST", "Cifar10"}
+
+
+def _stack_image_samples(samples):
+    xs, ys = [], []
+    for x, y in samples:
+        if isinstance(x, (tuple, list)):
+            return None
+        xs.append(x.float())
+        ys.append(int(y.item()) if torch.is_tensor(y) else int(y))
+
+    x_tensor = torch.stack(xs, dim=0)
+    y_tensor = torch.tensor(ys, dtype=torch.long)
+    return TensorDataset(x_tensor, y_tensor)
+
+
+def _split_dataset(dataset, support_ratio, seed, min_query_size=1):
+    n_samples = len(dataset)
+    if n_samples < 2:
+        raise ValueError("Need at least two samples to split support/query sets.")
+
+    support_size = int(round(n_samples * support_ratio))
+    support_size = max(1, min(support_size, n_samples - min_query_size))
+    query_size = n_samples - support_size
+    if query_size < min_query_size:
+        query_size = min_query_size
+        support_size = n_samples - query_size
+
+    generator = torch.Generator().manual_seed(seed)
+    indices = torch.randperm(n_samples, generator=generator)
+    support_idx = indices[:support_size]
+    query_idx = indices[support_size:support_size + query_size]
+
+    support_subset = torch.utils.data.Subset(dataset, support_idx.tolist())
+    query_subset = torch.utils.data.Subset(dataset, query_idx.tolist())
+    return support_subset, query_subset
+
+
+def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed):
+    support_dataset, query_dataset = _split_dataset(dataset, support_ratio, seed)
+    support_loader = DataLoader(support_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
+    query_loader = DataLoader(query_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+    return support_loader, query_loader
+
+
+def _make_real_clients(args):
     clients = []
-
     for cid in range(args.num_clients):
-        group = cid % args.mcfl_true_groups
-        shift = group * 1.2
+        train_samples = read_client_data(args.dataset, cid, is_train=True, few_shot=args.few_shot)
+        dataset = _stack_image_samples(train_samples)
+        if dataset is None:
+            raise ValueError(f"Dataset {args.dataset} is not image-like for MCFL.")
 
-        x_support = torch.randn(args.mcfl_samples_per_client, args.mcfl_input_dim) + shift
-        x_query = torch.randn(args.mcfl_samples_per_client, args.mcfl_input_dim) + shift
-
-        weight = torch.zeros(args.mcfl_input_dim)
-        weight[group::args.mcfl_true_groups] = 1.0
-
-        logits_s = x_support @ weight + 0.2 * torch.randn(args.mcfl_samples_per_client)
-        logits_q = x_query @ weight + 0.2 * torch.randn(args.mcfl_samples_per_client)
-
-        y_support = (logits_s > logits_s.median()).long()
-        y_query = (logits_q > logits_q.median()).long()
-
-        support_loader = DataLoader(
-            TensorDataset(x_support, y_support),
+        support_loader, query_loader = _build_loaders_from_dataset(
+            dataset=dataset,
             batch_size=args.batch_size,
-            shuffle=True,
-        )
-        query_loader = DataLoader(
-            TensorDataset(x_query, y_query),
-            batch_size=args.batch_size,
-            shuffle=True,
+            support_ratio=args.mcfl_support_ratio,
+            seed=args.mcfl_seed + cid,
         )
 
         clients.append(
@@ -41,8 +73,62 @@ def make_synthetic_clients(args):
                 support_loader=support_loader,
                 query_loader=query_loader,
                 device=args.device,
+                local_epochs=args.mcfl_local_epochs,
             )
         )
 
     return clients
+
+
+def _make_synthetic_clients(args):
+    clients = []
+    total_samples = max(args.mcfl_samples_per_client, args.batch_size * 8)
+
+    for cid in range(args.num_clients):
+        group = cid % args.mcfl_true_groups
+        group_shift = torch.randn(args.mcfl_input_dim) * 0.25 + group * 0.75
+
+        x = torch.randn(total_samples, args.mcfl_input_dim) + group_shift
+        shared_basis = torch.randn(args.mcfl_input_dim, args.num_classes)
+        class_bias = torch.zeros(args.num_classes)
+        class_bias[group % args.num_classes] = 1.5
+        logits = x @ shared_basis + class_bias + 0.15 * torch.randn(total_samples, args.num_classes)
+        y = logits.argmax(dim=1)
+
+        dataset = TensorDataset(x, y)
+        support_loader, query_loader = _build_loaders_from_dataset(
+            dataset=dataset,
+            batch_size=args.batch_size,
+            support_ratio=args.mcfl_support_ratio,
+            seed=args.mcfl_seed + cid,
+        )
+
+        clients.append(
+            MCFLClient(
+                client_id=cid,
+                support_loader=support_loader,
+                query_loader=query_loader,
+                device=args.device,
+                local_epochs=args.mcfl_local_epochs,
+            )
+        )
+
+    return clients
+
+
+def make_mcfl_clients(args):
+    if args.dataset in IMAGE_DATASETS:
+        try:
+            if Path(f"./dataset/data/{args.dataset}").exists():
+                return _make_real_clients(args)
+        except Exception as exc:
+            print(f"[MCFL] Falling back to synthetic benchmark: {exc}")
+
+    return _make_synthetic_clients(args)
+
+
+# Backward-compatible alias.
+def make_synthetic_clients(args):
+    return make_mcfl_clients(args)
+
 
