@@ -23,7 +23,7 @@ def _stack_image_samples(samples):
     return TensorDataset(x_tensor, y_tensor)
 
 
-def _stack_samples_for_backbone(samples, use_cnn):
+def _stack_samples_for_backbone(samples, use_cnn, label_to_index=None):
     xs, ys = [], []
     for x, y in samples:
         if isinstance(x, (tuple, list)):
@@ -38,8 +38,19 @@ def _stack_samples_for_backbone(samples, use_cnn):
         else:
             x = x.reshape(-1)
 
+        raw_label = int(y.item()) if torch.is_tensor(y) else int(y)
+        if raw_label < 0:
+            raise ValueError(f"Negative labels are not supported for MCFL: {raw_label}")
+
+        if label_to_index is not None:
+            if raw_label not in label_to_index:
+                label_to_index[raw_label] = len(label_to_index)
+            label = label_to_index[raw_label]
+        else:
+            label = raw_label
+
         xs.append(x)
-        ys.append(int(y.item()) if torch.is_tensor(y) else int(y))
+        ys.append(label)
 
     x_tensor = torch.stack(xs, dim=0)
     y_tensor = torch.tensor(ys, dtype=torch.long)
@@ -79,10 +90,15 @@ def _make_real_clients(args):
     clients = []
     use_cnn = args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and args.dataset in IMAGE_DATASETS)
     inferred_input_dim = None
+    label_to_index = {}
 
     for cid in range(args.num_clients):
         train_samples = read_client_data(args.dataset, cid, is_train=True, few_shot=args.few_shot)
-        dataset, feature_dim = _stack_samples_for_backbone(train_samples, use_cnn=use_cnn)
+        dataset, feature_dim = _stack_samples_for_backbone(
+            train_samples,
+            use_cnn=use_cnn,
+            label_to_index=label_to_index,
+        )
         if dataset is None:
             raise ValueError(f"Dataset {args.dataset} is not image-like for MCFL.")
 
@@ -108,6 +124,14 @@ def _make_real_clients(args):
 
     if inferred_input_dim is not None:
         args.mcfl_input_dim = inferred_input_dim
+
+    inferred_num_classes = max(len(label_to_index), 1)
+    if args.num_classes != inferred_num_classes:
+        print(
+            f"[MCFL] Adjust num_classes from {args.num_classes} to {inferred_num_classes} "
+            f"based on observed client labels: {sorted(label_to_index.keys())}"
+        )
+        args.num_classes = inferred_num_classes
 
     return clients
 
