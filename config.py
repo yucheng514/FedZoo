@@ -47,6 +47,29 @@ def build_parser():
     parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
     parser.add_argument('--mcfl_recluster_every', type=int, default=5)
+
+    # CFL-related arguments
+    parser.add_argument('--cfl_seed', type=int, default=42)
+    parser.add_argument('--cfl_data_root', type=str, default='.')
+    parser.add_argument('--cfl_split', type=str, default='byclass')
+    parser.add_argument('--cfl_num_clients', type=int, default=10)
+    parser.add_argument('--cfl_num_classes', type=int, default=62)
+    parser.add_argument('--cfl_dirichlet_alpha', type=float, default=1.0)
+    parser.add_argument('--cfl_train_samples', type=int, default=10000)
+    parser.add_argument('--cfl_test_samples', type=int, default=10000)
+    parser.add_argument('--cfl_rotation_clients', type=int, default=5)
+    parser.add_argument('--cfl_rotation_degrees', type=int, default=180)
+    parser.add_argument('--cfl_batch_size', type=int, default=128)
+    parser.add_argument('--cfl_train_frac', type=float, default=0.8)
+    parser.add_argument('--cfl_local_epochs', type=int, default=1)
+    parser.add_argument('--cfl_lr', type=float, default=0.1)
+    parser.add_argument('--cfl_momentum', type=float, default=0.9)
+    parser.add_argument('--cfl_eps_1', type=float, default=0.4)
+    parser.add_argument('--cfl_eps_2', type=float, default=1.6)
+    parser.add_argument('--cfl_split_round', type=int, default=20)
+    parser.add_argument('--cfl_plot_every', type=int, default=0, help='Plot CFL stats every N rounds; 0 disables plotting.')
+    parser.add_argument('--cfl_download', dest='cfl_download', action='store_true', default=True)
+    parser.add_argument('--cfl_no_download', dest='cfl_download', action='store_false')
     return parser
 
 

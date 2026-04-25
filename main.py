@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict
 
+import numpy as np
 import torch
 
 from config import get_args, resolve_device
@@ -96,8 +97,103 @@ def run_mcfl(args):
         )
 
 
+def run_cfl(args):
+    from clients.clientCFL import CFLClient
+    from dataset.cfl_emnist import make_cfl_partition
+    from models.cfl_models import CFLConvNet
+    from servers.serverCFL import CFLServer
+    from utils.cfl_helper import ExperimentLogger, display_train_stats
+
+    set_seed(args.cfl_seed)
+
+    client_data, test_data, _ = make_cfl_partition(args)
+
+    model_fn = lambda: CFLConvNet(num_classes=args.cfl_num_classes)
+    optimizer_fn = lambda params: torch.optim.SGD(params, lr=args.cfl_lr, momentum=args.cfl_momentum)
+
+    clients = [
+        CFLClient(
+            args=args,
+            idnum=i,
+            data=dat,
+            model_fn=model_fn,
+            optimizer_fn=optimizer_fn,
+            batch_size=args.cfl_batch_size,
+            train_frac=args.cfl_train_frac,
+            seed=args.cfl_seed,
+        )
+        for i, dat in enumerate(client_data)
+    ]
+    server = CFLServer(global_model=model_fn(), test_data=test_data, device=args.device)
+
+    cfl_stats = ExperimentLogger()
+    cluster_indices = [np.arange(len(clients)).astype(int)]
+    acc_clients = [client.evaluate() for client in clients]
+
+    for c_round in range(1, args.global_rounds + 1):
+        if c_round == 1:
+            server.synchronize_clients(clients)
+
+        participating_clients = server.select_clients(clients, frac=1.0)
+        for client in participating_clients:
+            client.compute_weight_update(epochs=args.cfl_local_epochs)
+            client.reset()
+
+        similarities = server.compute_pairwise_similarities(clients)
+        cluster_indices_new = []
+        last_mean_norm = 0.0
+        last_max_norm = 0.0
+
+        for idc in cluster_indices:
+            current_cluster = [clients[i] for i in idc]
+            last_max_norm = server.compute_max_update_norm(current_cluster)
+            last_mean_norm = server.compute_mean_update_norm(current_cluster)
+
+            if last_mean_norm < args.cfl_eps_1 and last_max_norm > args.cfl_eps_2 and len(idc) > 2 and c_round > args.cfl_split_round:
+                server.cache_model(idc, clients[idc[0]].W, acc_clients)
+                c1, c2 = server.cluster_clients(similarities[idc][:, idc])
+                cluster_indices_new += [idc[c1], idc[c2]]
+                cfl_stats.log({"split": c_round})
+            else:
+                cluster_indices_new += [idc]
+
+        cluster_indices = cluster_indices_new
+        client_clusters = [[clients[i] for i in idcs] for idcs in cluster_indices]
+        server.aggregate_clusterwise(client_clusters)
+
+        acc_clients = [client.evaluate() for client in clients]
+        cfl_stats.log(
+            {
+                "acc_clients": acc_clients,
+                "mean_norm": last_mean_norm,
+                "max_norm": last_max_norm,
+                "rounds": c_round,
+                "clusters": cluster_indices,
+            }
+        )
+
+        cluster_hist = {i: len(idcs) for i, idcs in enumerate(cluster_indices)}
+        print(
+            f"Round {c_round:03d} | "
+            f"acc_mean={np.mean(acc_clients):.4f} | "
+            f"mean_norm={last_mean_norm:.4f} | "
+            f"max_norm={last_max_norm:.4f} | "
+            f"clusters={cluster_hist}"
+        )
+
+        if args.cfl_plot_every and c_round % args.cfl_plot_every == 0:
+            display_train_stats(cfl_stats, args.cfl_eps_1, args.cfl_eps_2, args.global_rounds)
+
+    for idc in cluster_indices:
+        server.cache_model(idc, clients[idc[0]].W, acc_clients)
+
+    return server, clients, cfl_stats
+
+
 def run(args):
-    if args.algorithm == "MCFL":
+    if args.algorithm == "CFL":
+        run_cfl(args)
+    elif args.algorithm == "MCFL":
         run_mcfl(args)
     else:
         run_fedavg(args)
