@@ -17,6 +17,7 @@ def build_parser():
     parser.add_argument('-lbs', "--batch_size", type=int, default=10)
     parser.add_argument('-ls', "--local_epochs", type=int, default=1, help="Local epochs per round")
     parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005, help="Local learning rate")
+    parser.add_argument('-tr', "--train_frac", type=float, default=0.8, help="Train fraction used by CFL client split")
     parser.add_argument('-sfn', "--save_folder_name", type=str, default='items')
 
     # FedAvg-specific arguments.

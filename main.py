@@ -119,7 +119,7 @@ def run_cfl(args):
             model_fn=model_fn,
             optimizer_fn=optimizer_fn,
             batch_size=args.batch_size,
-            train_frac=args.cfl_train_frac,
+            train_frac=args.train_frac,
             seed=args.cfl_seed,
         )
         for i, dat in enumerate(client_data)
