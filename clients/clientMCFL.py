@@ -25,6 +25,19 @@ class MCFLClient:
         params = clone_params_dict(meta_model)
         original_params = {name: p for name, p in params.items()}
 
+        def _check_labels(logits, targets, phase):
+            if targets.numel() == 0:
+                raise ValueError(f"MCFL {phase} batch is empty.")
+            if targets.dtype != torch.long:
+                raise TypeError(f"MCFL {phase} labels must be torch.long, got {targets.dtype}.")
+            num_classes = logits.shape[-1]
+            min_label = int(targets.min().item())
+            max_label = int(targets.max().item())
+            if min_label < 0 or max_label >= num_classes:
+                raise ValueError(
+                    f"MCFL {phase} labels out of range: min={min_label}, max={max_label}, num_classes={num_classes}."
+                )
+
         support_loss_total = 0.0
         support_samples = 0
         for _ in range(local_epochs):
@@ -33,6 +46,7 @@ class MCFLClient:
                 y_s = y_s.to(self.device)
 
                 logits_s = functional_call(meta_model, params, (x_s,))
+                _check_labels(logits_s, y_s, "support")
                 support_loss = F.cross_entropy(logits_s, y_s)
 
                 support_grads = torch.autograd.grad(
@@ -57,6 +71,7 @@ class MCFLClient:
             x_q = x_q.to(self.device)
             y_q = y_q.to(self.device)
             logits_q = functional_call(meta_model, params, (x_q,))
+            _check_labels(logits_q, y_q, "query")
             batch_query_loss = F.cross_entropy(logits_q, y_q)
 
             weighted_loss = batch_query_loss * y_q.size(0)

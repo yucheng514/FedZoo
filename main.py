@@ -49,10 +49,17 @@ def run_mcfl(args):
             raise ValueError(f"Unsupported image dataset for MCFL CNN backbone: {args.dataset}")
     else:
         base_model = MCFLMLPClassifier(
-            in_dim=args.mcfl_input_dim,
+            in_dim=None,
             hidden_dim=args.mcfl_hidden_dim,
             num_classes=args.num_classes,
         )
+
+    base_model = base_model.to(args.device)
+
+    # Materialize lazy layers / verify the backbone shape with one real client batch.
+    warmup_x, _ = next(iter(clients[0].support_loader))
+    with torch.no_grad():
+        base_model(warmup_x.to(args.device))
 
     server = MCFLServer(
         global_model=base_model,

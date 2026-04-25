@@ -1,12 +1,14 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class MCFLFormalMLP(nn.Module):
-    def __init__(self, in_dim=64, hidden_dim=256, num_classes=2, dropout=0.2):
+    def __init__(self, in_dim=None, hidden_dim=256, num_classes=2, dropout=0.2):
         super().__init__()
+        first_layer = nn.LazyLinear(hidden_dim) if in_dim is None else nn.Linear(in_dim, hidden_dim)
         self.net = nn.Sequential(
-            nn.Linear(in_dim, hidden_dim),
+            first_layer,
             nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -20,6 +22,8 @@ class MCFLFormalMLP(nn.Module):
         )
 
     def forward(self, x):
+        if x.ndim > 2:
+            x = torch.flatten(x, 1)
         return self.net(x)
 
 
