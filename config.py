@@ -31,6 +31,19 @@ def build_parser():
     parser.add_argument('-tc', "--top_cnt", type=int, default=100, help="For auto_break")
     parser.add_argument('-go', "--goal", type=str, default="test", help="The goal for this experiment")
     parser.add_argument('-nnc', "--num_new_clients", type=int, default=0)
+
+    # MCFL-related arguments
+    parser.add_argument('--mcfl_seed', type=int, default=42)
+    parser.add_argument('--mcfl_input_dim', type=int, default=20)
+    parser.add_argument('--mcfl_samples_per_client', type=int, default=64)
+    parser.add_argument('--mcfl_true_groups', type=int, default=3)
+    parser.add_argument('--mcfl_hidden_dim', type=int, default=64)
+    parser.add_argument('--mcfl_num_clusters', type=int, default=3)
+    parser.add_argument('--mcfl_encoder_embed_dim', type=int, default=16)
+    parser.add_argument('--mcfl_outer_lr', type=float, default=1e-2)
+    parser.add_argument('--mcfl_inner_lr', type=float, default=0.1)
+    parser.add_argument('--mcfl_first_order', type=bool, default=True)
+    parser.add_argument('--mcfl_recluster_every', type=int, default=1)
     return parser
 
 
@@ -55,4 +68,3 @@ def resolve_device(args):
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     return args
-

@@ -1,38 +1,90 @@
 import time
+from collections import defaultdict
+
 import torch
-from models.models import FedAvgCNN
-from servers.serverAvg import FedAvg
-import copy
-from torch import nn
+
 from config import get_args, resolve_device
+from dataset.mcfl_synthetic import make_synthetic_clients
+from models.mcfl_models import MCFLMLPClassifier
+from servers.serverMCFL import MCFLServer
+from utils.mcfl_utils import set_seed
 
 torch.manual_seed(0)
 
 
-def run(args):
+def run_fedavg(args):
+    from models.models import FedAvgCNN
+    from servers.serverAvg import FedAvg
+
     time_list = []
     model_str = args.model
 
     for i in range(0, 1):
-
         print("Creating server and clients ...")
         start = time.time()
+        server = None
         if model_str == "CNN":
             if "MNIST" in args.dataset:
                 args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
             elif "Cifar10" in args.dataset:
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
 
-        # select algorithm
-        if args.algorithm == "FedAvg":
-            # args.head = copy.deepcopy(args.model.fc)
-            # args.model.fc = nn.Identity()
-            # args.model = BaseHeadSplit(args.model, args.head)
-            server = FedAvg(args, i)
-
+        server = FedAvg(args, i)
+        if server is None:
+            raise RuntimeError("Failed to initialize FedAvg server.")
         server.train()
-
         time_list.append(time.time() - start)
+
+
+def run_mcfl(args):
+    set_seed(args.mcfl_seed)
+
+    base_model = MCFLMLPClassifier(
+        in_dim=args.mcfl_input_dim,
+        hidden_dim=args.mcfl_hidden_dim,
+        num_classes=args.num_classes,
+    )
+
+    server = MCFLServer(
+        global_model=base_model,
+        num_clusters=args.mcfl_num_clusters,
+        encoder_embed_dim=args.mcfl_encoder_embed_dim,
+        outer_lr=args.mcfl_outer_lr,
+        device=args.device,
+        recluster_every=args.mcfl_recluster_every,
+    )
+
+    clients = make_synthetic_clients(args)
+    server.assign_initial_clusters(clients)
+
+    for rnd in range(args.global_rounds):
+        stats = server.train_round(
+            clients,
+            round_idx=rnd,
+            inner_lr=args.mcfl_inner_lr,
+            first_order=args.mcfl_first_order,
+        )
+
+        avg_support = sum(s["support_loss"] for s in stats) / len(stats)
+        avg_query = sum(s["query_loss"] for s in stats) / len(stats)
+
+        cluster_hist = defaultdict(int)
+        for client in clients:
+            cluster_hist[client.cluster_id] += 1
+
+        print(
+            f"Round {rnd:03d} | "
+            f"support_loss={avg_support:.4f} | "
+            f"query_loss={avg_query:.4f} | "
+            f"clusters={dict(cluster_hist)}"
+        )
+
+
+def run(args):
+    if args.algorithm == "MCFL":
+        run_mcfl(args)
+    else:
+        run_fedavg(args)
 
 
 if __name__ == "__main__":
