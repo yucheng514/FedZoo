@@ -77,9 +77,9 @@ def run_mcfl(args):
         stats = server.train_round(
             clients,
             round_idx=rnd,
-            inner_lr=args.mcfl_inner_lr,
+            inner_lr=args.local_learning_rate,
             first_order=args.mcfl_first_order,
-            local_epochs=args.mcfl_local_epochs,
+            local_epochs=args.local_epochs,
         )
 
         avg_support = sum(s["support_loss"] for s in stats) / len(stats)
@@ -108,8 +108,8 @@ def run_cfl(args):
 
     client_data, test_data, _ = make_cfl_partition(args)
 
-    model_fn = lambda: CFLConvNet(num_classes=args.cfl_num_classes)
-    optimizer_fn = lambda params: torch.optim.SGD(params, lr=args.cfl_lr, momentum=args.cfl_momentum)
+    model_fn = lambda: CFLConvNet(num_classes=args.num_classes)
+    optimizer_fn = lambda params: torch.optim.SGD(params, lr=args.local_learning_rate, momentum=args.cfl_momentum)
 
     clients = [
         CFLClient(
@@ -118,7 +118,7 @@ def run_cfl(args):
             data=dat,
             model_fn=model_fn,
             optimizer_fn=optimizer_fn,
-            batch_size=args.cfl_batch_size,
+            batch_size=args.batch_size,
             train_frac=args.cfl_train_frac,
             seed=args.cfl_seed,
         )
@@ -136,7 +136,7 @@ def run_cfl(args):
 
         participating_clients = server.select_clients(clients, frac=1.0)
         for client in participating_clients:
-            client.compute_weight_update(epochs=args.cfl_local_epochs)
+            client.compute_weight_update(epochs=args.local_epochs)
             client.reset()
 
         similarities = server.compute_pairwise_similarities(clients)

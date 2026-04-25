@@ -24,14 +24,14 @@ def make_cfl_partition(args):
     test_idcs = idcs[train_size:train_size + test_size]
 
     train_labels = np.asarray(data.targets)
-    client_idcs = split_noniid(train_idcs, train_labels, alpha=args.cfl_dirichlet_alpha, n_clients=args.cfl_num_clients)
+    client_idcs = split_noniid(train_idcs, train_labels, alpha=args.cfl_dirichlet_alpha, n_clients=args.num_clients)
 
     client_data = []
     rotation_clients = min(args.cfl_rotation_clients, len(client_idcs))
     for cid, idxs in enumerate(client_idcs):
         if len(idxs) == 0:
             raise ValueError(
-                f"CFL partition produced an empty client {cid}. Try increasing cfl_train_samples or lowering cfl_num_clients."
+                f"CFL partition produced an empty client {cid}. Try increasing cfl_train_samples or lowering num_clients."
             )
         subset = CustomSubset(data, idxs)
         subset.subset_transform = _client_transform(cid, rotation_clients, args.cfl_rotation_degrees)

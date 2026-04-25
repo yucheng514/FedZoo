@@ -118,7 +118,7 @@ def _make_real_clients(args):
                 support_loader=support_loader,
                 query_loader=query_loader,
                 device=args.device,
-                local_epochs=args.mcfl_local_epochs,
+                local_epochs=args.local_epochs,
             )
         )
 
@@ -165,7 +165,7 @@ def _make_synthetic_clients(args):
                 support_loader=support_loader,
                 query_loader=query_loader,
                 device=args.device,
-                local_epochs=args.mcfl_local_epochs,
+                local_epochs=args.local_epochs,
             )
         )
 
