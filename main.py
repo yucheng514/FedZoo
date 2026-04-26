@@ -18,6 +18,17 @@ from utils.mcfl_utils import set_seed
 torch.manual_seed(0)
 
 
+def select_fractional_clients(clients, frac, seed):
+    if not clients:
+        return []
+    frac = min(max(frac, 0.0), 1.0)
+    n_selected = max(1, int(round(len(clients) * frac)))
+    n_selected = min(len(clients), n_selected)
+    rng = np.random.default_rng(seed)
+    indices = rng.choice(len(clients), size=n_selected, replace=False)
+    return [clients[i] for i in indices]
+
+
 class StdoutTee:
     def __init__(self, *streams):
         self.streams = streams
@@ -133,8 +144,9 @@ def run_mcfl(args):
     server.assign_initial_clusters(clients)
 
     for rnd in range(args.global_rounds):
+        participating_clients = select_fractional_clients(clients, args.join_ratio, args.mcfl_seed + rnd)
         stats = server.train_round(
-            clients,
+            participating_clients,
             round_idx=rnd,
             inner_lr=args.local_learning_rate,
             first_order=args.mcfl_first_order,
@@ -218,7 +230,12 @@ def run_cfl(args):
         if c_round == 1:
             server.synchronize_clients(clients)
 
-        participating_clients = server.select_clients(clients, frac=1.0)
+        active_clients = server.select_clients(clients, frac=args.join_ratio)
+        active_ids = {client.id for client in active_clients}
+        for client in clients:
+            for tensor in client.dW.values():
+                tensor.zero_()
+        participating_clients = active_clients
         for client in participating_clients:
             client.compute_weight_update(epochs=args.local_epochs)
             client.reset()
@@ -243,7 +260,7 @@ def run_cfl(args):
 
         cluster_indices = cluster_indices_new
         client_clusters = [[clients[i] for i in idcs] for idcs in cluster_indices]
-        server.aggregate_clusterwise(client_clusters)
+        server.aggregate_clusterwise(client_clusters, active_ids=active_ids)
 
         acc_clients = [client.evaluate() for client in clients]
         cfl_stats.log(
@@ -366,7 +383,8 @@ def run_ifca(args):
         print(f"Round -01 | test_acc={initial['test_acc']:.4f}")
 
     for rnd in range(args.global_rounds):
-        server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau)
+        participating_clients = select_fractional_clients(clients, args.join_ratio, args.ifca_seed + rnd)
+        server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau, clients=participating_clients)
         eval_stats = server.evaluate()
         cluster_acc_str = "n/a" if eval_stats["cluster_acc"] < 0 else f"{eval_stats['cluster_acc']:.4f}"
         line = (

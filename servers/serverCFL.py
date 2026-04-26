@@ -33,11 +33,17 @@ class CFLServer:
     def cluster_clients(self, S):
         return pairwise_cluster_split(S)
 
-    def aggregate_clusterwise(self, client_clusters):
+    def aggregate_clusterwise(self, client_clusters, active_ids=None):
         for cluster in client_clusters:
             if not cluster:
                 continue
-            reduce_add_average(targets=[client.W for client in cluster], sources=[client.dW for client in cluster])
+            if active_ids is None:
+                sources = [client.dW for client in cluster]
+            else:
+                sources = [client.dW for client in cluster if client.id in active_ids]
+            if not sources:
+                continue
+            reduce_add_average(targets=[client.W for client in cluster], sources=sources)
 
     def compute_max_update_norm(self, cluster):
         return np.max([torch.norm(flatten(client.dW)).item() for client in cluster]) if cluster else 0.0
@@ -56,4 +62,3 @@ class CFLServer:
                 [accuracies[i] for i in idcs],
             )
         ]
-

@@ -53,13 +53,16 @@ class IFCAServer:
             assignments.append(min(range(len(losses)), key=lambda idx: losses[idx]))
         return assignments
 
-    def train_round(self, lr, local_epochs):
-        assignments = self.assign_clients()
+    def train_round(self, lr, local_epochs, clients=None):
+        active_clients = self.clients if clients is None else list(clients)
+        all_assignments = self.assign_clients()
+        assignment_map = {client.id: cluster_idx for client, cluster_idx in zip(self.clients, all_assignments)}
         grouped_updates = [[] for _ in self.cluster_models]
         grouped_weights = [[] for _ in self.cluster_models]
         train_losses = []
 
-        for client, cluster_idx in zip(self.clients, assignments):
+        for client in active_clients:
+            cluster_idx = assignment_map[client.id]
             update = client.local_update(
                 base_model=self.cluster_models[cluster_idx],
                 criterion=self.criterion,
@@ -76,7 +79,7 @@ class IFCAServer:
                 self.cluster_models[cluster_idx] = self._aggregate(local_models, grouped_weights[cluster_idx]).to(self.device)
 
         return {
-            "assignments": assignments,
+            "assignments": all_assignments,
             "train_loss": float(sum(train_losses) / len(train_losses)) if train_losses else 0.0,
         }
 
