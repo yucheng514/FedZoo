@@ -197,7 +197,7 @@ def run_cfl(args):
 
     client_data, test_data, _ = make_cfl_partition(args)
 
-    if args.dataset == "MNIST":
+    if args.dataset in {"MNIST", "EMNIST"} and has_partitioned_data(args.dataset):
         from models.models import FedAvgCNN
 
         model_fn = lambda: FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
@@ -299,7 +299,7 @@ def run_ifca(args):
     set_seed(args.ifca_seed)
 
     dataset_name = args.dataset.upper()
-    if dataset_name == "MNIST" and has_partitioned_data(args.dataset):
+    if dataset_name in {"MNIST", "EMNIST"} and has_partitioned_data(args.dataset):
         from models.models import FedAvgCNN
 
         raw_clients = make_partitioned_tensor_clients(args, flatten=False)

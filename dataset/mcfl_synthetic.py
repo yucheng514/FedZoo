@@ -8,7 +8,7 @@ from dataset.shared_fl import has_partitioned_data
 from utils.data_utils import read_client_data
 
 
-IMAGE_DATASETS = {"MNIST", "Cifar10"}
+IMAGE_DATASETS = {"MNIST", "Cifar10", "EMNIST"}
 
 
 def _stack_image_samples(samples):
@@ -196,4 +196,3 @@ def make_mcfl_clients(args):
 # Backward-compatible alias.
 def make_synthetic_clients(args):
     return make_mcfl_clients(args)
-
