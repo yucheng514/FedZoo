@@ -1,5 +1,10 @@
 # FedZoo
 
+MCFL：0.7844 ± 0.0193
+seed 值：[0.7824, 0.7706, 0.8181, 0.7775, 0.7735]
+CFL：0.7289 ± 0.0088
+seed 值：[0.7273, 0.7414, 0.7196, 0.7339, 0.7225]
+
 This repository now contains the original FedAvg pipeline plus integrated MCFL, CFL, and IFCA pipelines.
 
 ## Algorithms

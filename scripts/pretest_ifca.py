@@ -25,7 +25,7 @@ def main():
     args = parser.parse_args()
 
     if args.mode in {"smoke", "all"}:
-        run_command([args.python, "tests/ifca_smoke.py"])
+        run_command([args.python, "-m", "tests.ifca_smoke"])
 
     if args.mode in {"main", "all"}:
         run_command(

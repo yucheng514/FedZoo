@@ -1,6 +1,12 @@
 from types import SimpleNamespace
+from pathlib import Path
+import sys
 
 import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from clients.clientIFCA import IFCAClient
 from dataset.ifca_synthetic import make_ifca_synthetic_clients
