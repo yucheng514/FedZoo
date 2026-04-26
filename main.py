@@ -1,5 +1,8 @@
 import time
 from collections import defaultdict
+from contextlib import contextmanager
+from pathlib import Path
+import sys
 
 import numpy as np
 import torch
@@ -11,6 +14,38 @@ from servers.serverMCFL import MCFLServer
 from utils.mcfl_utils import set_seed
 
 torch.manual_seed(0)
+
+
+class StdoutTee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()
+
+
+@contextmanager
+def maybe_log_to_file(log_file, append=False):
+    if not log_file:
+        yield
+        return
+
+    path = Path(log_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if append else "w"
+    with path.open(mode, encoding="utf-8") as fp:
+        original_stdout = sys.stdout
+        sys.stdout = StdoutTee(original_stdout, fp)
+        try:
+            yield
+        finally:
+            sys.stdout = original_stdout
 
 
 def run_fedavg(args):
@@ -41,13 +76,36 @@ def run_mcfl(args):
 
     clients = make_mcfl_clients(args)
 
-    if args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and args.dataset in {"MNIST", "Cifar10"}):
-        if "MNIST" in args.dataset:
-            base_model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
-        elif "Cifar10" in args.dataset:
-            base_model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)
-        else:
-            raise ValueError(f"Unsupported image dataset for MCFL CNN backbone: {args.dataset}")
+    warmup_x, _ = next(iter(clients[0].support_loader))
+
+    def _infer_fedavgcnn_dim(sample_batch):
+        h, w = int(sample_batch.shape[-2]), int(sample_batch.shape[-1])
+        h = (h - 4) // 2
+        h = (h - 4) // 2
+        w = (w - 4) // 2
+        w = (w - 4) // 2
+        if h <= 0 or w <= 0:
+            raise ValueError(f"Invalid input shape for FedAvgCNN: {tuple(sample_batch.shape)}")
+        return 64 * h * w
+
+    input_is_image = warmup_x.ndim == 4
+    if args.mcfl_backbone == "auto":
+        use_cnn = input_is_image
+    elif args.mcfl_backbone == "cnn":
+        if not input_is_image:
+            raise ValueError(
+                "MCFL backbone is set to cnn, but client data is not image-like "
+                f"(got shape {tuple(warmup_x.shape)}). "
+                "Use --mcfl_backbone mlp or provide image-format client data."
+            )
+        use_cnn = True
+    else:
+        use_cnn = False
+
+    if use_cnn:
+        in_features = int(warmup_x.shape[1])
+        conv_dim = _infer_fedavgcnn_dim(warmup_x)
+        base_model = FedAvgCNN(in_features=in_features, num_classes=args.num_classes, dim=conv_dim)
     else:
         base_model = MCFLMLPClassifier(
             in_dim=None,
@@ -58,7 +116,6 @@ def run_mcfl(args):
     base_model = base_model.to(args.device)
 
     # Materialize lazy layers / verify the backbone shape with one real client batch.
-    warmup_x, _ = next(iter(clients[0].support_loader))
     with torch.no_grad():
         base_model(warmup_x.to(args.device))
 
@@ -211,9 +268,10 @@ if __name__ == "__main__":
 
     args = get_args()
     resolve_device(args)
-    print(f"\nUsing device: {args.device}\n")
-    print("=== args " + "=" * 50)
-    for arg in vars(args):
-        print(arg, '=', getattr(args, arg))
-    print("=== args end " + "=" * 46)
-    run(args)
+    with maybe_log_to_file(args.log_file, append=args.log_append):
+        print(f"\nUsing device: {args.device}\n")
+        print("=== args " + "=" * 50)
+        for arg in vars(args):
+            print(arg, '=', getattr(args, arg))
+        print("=== args end " + "=" * 46)
+        run(args)

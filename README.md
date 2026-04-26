@@ -34,5 +34,6 @@ This repository now contains the original FedAvg pipeline plus integrated MCFL a
 ```bash
 python main.py -al FedAvg
 python main.py -al MCFL -gr 10 -nc 20 -ncl 10 --mcfl_backbone auto
-python main.py -al CFL -gr 80 --cfl_num_clients 10 --cfl_num_classes 62 --cfl_dirichlet_alpha 1.0
+python main.py -al CFL -gr 80 -nc 10 -ncl 62 --cfl_dirichlet_alpha 1.0
+python main.py -al MCFL -gr 10 --log_file logs/mcfl_seed1.txt
 ```

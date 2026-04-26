@@ -19,6 +19,8 @@ def build_parser():
     parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005, help="Local learning rate")
     parser.add_argument('-tr', "--train_frac", type=float, default=0.8, help="Train fraction used by CFL client split")
     parser.add_argument('-sfn', "--save_folder_name", type=str, default='items')
+    parser.add_argument('--log_file', type=str, default='', help='Optional log file path for cross-platform stdout tee')
+    parser.add_argument('--log_append', action='store_true', help='Append to log file instead of overwrite')
 
     # FedAvg-specific arguments.
     parser.add_argument('-m', "--model", type=str, default="CNN")
