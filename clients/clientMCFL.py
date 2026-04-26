@@ -16,6 +16,34 @@ class MCFLClient:
         self.local_epochs = local_epochs
         self.cluster_id = 0
 
+    def _adapt_params(self, meta_model, inner_lr=0.1, local_epochs=None):
+        meta_model = meta_model.to(self.device)
+        meta_model.train()
+
+        if local_epochs is None:
+            local_epochs = self.local_epochs
+
+        params = clone_params_dict(meta_model)
+        for _ in range(local_epochs):
+            for x_s, y_s in self.support_loader:
+                x_s = x_s.to(self.device)
+                y_s = y_s.to(self.device)
+
+                logits_s = functional_call(meta_model, params, (x_s,))
+                support_loss = F.cross_entropy(logits_s, y_s)
+                support_grads = torch.autograd.grad(
+                    support_loss,
+                    list(params.values()),
+                    create_graph=False,
+                    allow_unused=False,
+                )
+                params = {
+                    name: p - inner_lr * g
+                    for (name, p), g in zip(params.items(), support_grads)
+                }
+
+        return params
+
     def local_adapt_and_meta_grad(self, meta_model, inner_lr=0.1, first_order=True, local_epochs=None):
         meta_model = meta_model.to(self.device)
         meta_model.train()
@@ -117,8 +145,12 @@ class MCFLClient:
 
         return meta_grads, update_vec, stats
 
-    def evaluate(self, model):
+    def evaluate(self, model, adapt=False, inner_lr=0.1, local_epochs=None):
         model = model.to(self.device)
+        eval_params = None
+        if adapt:
+            eval_params = self._adapt_params(model, inner_lr=inner_lr, local_epochs=local_epochs)
+
         model.eval()
         total = 0
         correct = 0
@@ -126,7 +158,10 @@ class MCFLClient:
             for x, y in self.test_loader:
                 x = x.to(self.device)
                 y = y.to(self.device)
-                logits = model(x)
+                if eval_params is None:
+                    logits = model(x)
+                else:
+                    logits = functional_call(model, eval_params, (x,))
                 preds = torch.argmax(logits, dim=1)
                 correct += (preds == y).sum().item()
                 total += y.size(0)

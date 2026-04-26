@@ -152,7 +152,16 @@ def run_mcfl(args):
         for client in clients:
             cluster_hist[client.cluster_id] += 1
 
-        test_accs = [client.evaluate(server.cluster_models[client.cluster_id]) for client in clients]
+        raw_test_accs = [client.evaluate(server.cluster_models[client.cluster_id], adapt=False) for client in clients]
+        adapted_test_accs = [
+            client.evaluate(
+                server.cluster_models[client.cluster_id],
+                adapt=True,
+                inner_lr=args.local_learning_rate,
+                local_epochs=args.local_epochs,
+            )
+            for client in clients
+        ]
 
         print(
             f"Round {rnd:03d} | "
@@ -160,7 +169,8 @@ def run_mcfl(args):
             f"query_loss={avg_query:.4f} | "
             f"support_acc={support_acc:.4f} | "
             f"query_acc={query_acc:.4f} | "
-            f"test_acc={sum(test_accs) / len(test_accs):.4f} | "
+            f"test_acc={sum(adapted_test_accs) / len(adapted_test_accs):.4f} | "
+            f"raw_test_acc={sum(raw_test_accs) / len(raw_test_accs):.4f} | "
             f"clusters={dict(cluster_hist)}"
         )
 
