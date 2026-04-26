@@ -16,15 +16,19 @@ class CFLClient:
         self.train_time_cost = {"num_rounds": 0, "total_cost": 0.0}
         self.send_time_cost = {"num_rounds": 0, "total_cost": 0.0}
 
-        n_total = len(data)
-        if n_total < 2:
-            raise ValueError(f"Client {idnum} needs at least 2 samples, got {n_total}.")
+        if isinstance(data, dict) and "train" in data and "eval" in data:
+            data_train = data["train"]
+            data_eval = data["eval"]
+        else:
+            n_total = len(data)
+            if n_total < 2:
+                raise ValueError(f"Client {idnum} needs at least 2 samples, got {n_total}.")
 
-        n_train = max(1, int(round(n_total * train_frac)))
-        n_train = min(n_train, n_total - 1)
-        n_eval = n_total - n_train
-        generator = torch.Generator().manual_seed(seed + idnum)
-        data_train, data_eval = random_split(self.data, [n_train, n_eval], generator=generator)
+            n_train = max(1, int(round(n_total * train_frac)))
+            n_train = min(n_train, n_total - 1)
+            n_eval = n_total - n_train
+            generator = torch.Generator().manual_seed(seed + idnum)
+            data_train, data_eval = random_split(self.data, [n_train, n_eval], generator=generator)
 
         self.train_loader = DataLoader(data_train, batch_size=batch_size, shuffle=True, drop_last=False)
         self.eval_loader = DataLoader(data_eval, batch_size=batch_size, shuffle=False, drop_last=False)
@@ -48,4 +52,3 @@ class CFLClient:
 
     def evaluate(self, loader=None):
         return eval_op(self.model, self.eval_loader if loader is None else loader, self.device)
-

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import torch
 from torchvision import datasets
 
+from dataset.download_paths import resolve_torchvision_root
 
 @dataclass
 class IFCATensorClient:
@@ -54,8 +55,9 @@ def _build_split_clients(images, labels, num_clients, num_clusters):
 
 
 def make_ifca_rotated_cifar_clients(args):
-    train_set = datasets.CIFAR10(root=args.ifca_data_root, train=True, download=args.ifca_download)
-    test_set = datasets.CIFAR10(root=args.ifca_data_root, train=False, download=args.ifca_download)
+    data_root = resolve_torchvision_root(args.ifca_data_root, "CIFAR10")
+    train_set = datasets.CIFAR10(root=str(data_root), train=True, download=args.ifca_download)
+    test_set = datasets.CIFAR10(root=str(data_root), train=False, download=args.ifca_download)
 
     train_images = torch.tensor(train_set.data).permute(0, 3, 1, 2).float() / 255.0
     train_labels = torch.tensor(train_set.targets)

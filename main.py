@@ -10,6 +10,7 @@ import torch
 
 from config import get_args, resolve_device
 from dataset.mcfl_synthetic import make_mcfl_clients
+from dataset.shared_fl import has_partitioned_data, make_partitioned_tensor_clients
 from models.mcfl_models import MCFLMLPClassifier
 from servers.serverMCFL import MCFLServer
 from utils.mcfl_utils import set_seed
@@ -151,13 +152,15 @@ def run_mcfl(args):
         for client in clients:
             cluster_hist[client.cluster_id] += 1
 
+        test_accs = [client.evaluate(server.cluster_models[client.cluster_id]) for client in clients]
+
         print(
             f"Round {rnd:03d} | "
             f"support_loss={avg_support:.4f} | "
             f"query_loss={avg_query:.4f} | "
             f"support_acc={support_acc:.4f} | "
             f"query_acc={query_acc:.4f} | "
-            f"acc_mean={query_acc:.4f} | "
+            f"test_acc={sum(test_accs) / len(test_accs):.4f} | "
             f"clusters={dict(cluster_hist)}"
         )
 
@@ -165,7 +168,6 @@ def run_mcfl(args):
 def run_cfl(args):
     from clients.clientCFL import CFLClient
     from dataset.cfl_emnist import make_cfl_partition
-    from models.cfl_models import CFLConvNet
     from servers.serverCFL import CFLServer
     from utils.cfl_helper import ExperimentLogger, display_train_stats
 
@@ -173,7 +175,14 @@ def run_cfl(args):
 
     client_data, test_data, _ = make_cfl_partition(args)
 
-    model_fn = lambda: CFLConvNet(num_classes=args.num_classes)
+    if args.dataset == "MNIST":
+        from models.models import FedAvgCNN
+
+        model_fn = lambda: FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
+    else:
+        from models.cfl_models import CFLConvNet
+
+        model_fn = lambda: CFLConvNet(num_classes=args.num_classes)
     optimizer_fn = lambda params: torch.optim.SGD(params, lr=args.local_learning_rate, momentum=args.cfl_momentum)
 
     clients = [
@@ -263,7 +272,14 @@ def run_ifca(args):
     set_seed(args.ifca_seed)
 
     dataset_name = args.dataset.upper()
-    if dataset_name == "MNIST":
+    if dataset_name == "MNIST" and has_partitioned_data(args.dataset):
+        from models.models import FedAvgCNN
+
+        raw_clients = make_partitioned_tensor_clients(args, flatten=False)
+        cluster_models = [FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024) for _ in range(args.ifca_clusters)]
+        criterion = torch.nn.CrossEntropyLoss()
+        task = "classification"
+    elif dataset_name == "MNIST":
         from dataset.ifca_rotated_mnist import make_ifca_rotated_mnist_clients
 
         raw_clients = make_ifca_rotated_mnist_clients(args)
@@ -332,7 +348,8 @@ def run_ifca(args):
         server.warmstart_clusters(assignments=assignments, lr=args.local_learning_rate, local_epochs=args.ifca_tau, rounds=args.ifca_init_rounds)
 
     initial = server.evaluate()
-    print(f"Round -01 | train_loss={initial['train_loss']:.4f} | cluster_acc={initial['cluster_acc']:.4f} | assignments={initial['assignment_hist']}")
+    initial_cluster = "n/a" if initial["cluster_acc"] < 0 else f"{initial['cluster_acc']:.4f}"
+    print(f"Round -01 | train_loss={initial['train_loss']:.4f} | cluster_acc={initial_cluster} | assignments={initial['assignment_hist']}")
     if task == "regression":
         print(f"Round -01 | test_mse={initial['test_mse']:.4f}")
     else:
@@ -341,10 +358,11 @@ def run_ifca(args):
     for rnd in range(args.global_rounds):
         server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau)
         eval_stats = server.evaluate()
+        cluster_acc_str = "n/a" if eval_stats["cluster_acc"] < 0 else f"{eval_stats['cluster_acc']:.4f}"
         line = (
             f"Round {rnd:03d} | "
             f"train_loss={eval_stats['train_loss']:.4f} | "
-            f"cluster_acc={eval_stats['cluster_acc']:.4f} | "
+            f"cluster_acc={cluster_acc_str} | "
             f"assignments={eval_stats['assignment_hist']}"
         )
         if task == "regression":

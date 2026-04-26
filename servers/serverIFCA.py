@@ -85,13 +85,16 @@ class IFCAServer:
         train_losses = []
         test_scores = []
         cluster_acc = []
+        has_cluster_labels = False
 
         for client, cluster_idx in zip(self.clients, assignments):
             model = self.cluster_models[cluster_idx]
             train_losses.append(client.loss_for_model(model, self.criterion, train=True))
             test_metric = client.metric_for_model(model, train=False)
             test_scores.append(test_metric)
-            cluster_acc.append(float(cluster_idx == client.cluster_id))
+            if getattr(client, "cluster_id", -1) >= 0:
+                has_cluster_labels = True
+                cluster_acc.append(float(cluster_idx == client.cluster_id))
 
         assignment_hist = {}
         for cluster_idx in assignments:
@@ -99,7 +102,7 @@ class IFCAServer:
 
         result = {
             "train_loss": float(sum(train_losses) / len(train_losses)) if train_losses else 0.0,
-            "cluster_acc": float(sum(cluster_acc) / len(cluster_acc)) if cluster_acc else 0.0,
+            "cluster_acc": float(sum(cluster_acc) / len(cluster_acc)) if has_cluster_labels and cluster_acc else -1.0,
             "assignment_hist": assignment_hist,
         }
 

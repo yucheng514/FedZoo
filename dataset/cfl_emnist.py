@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from torchvision import datasets, transforms
 
+from dataset.download_paths import resolve_torchvision_root
+from dataset.shared_fl import has_partitioned_data, make_partitioned_cfl_data
 from utils.cfl_data_utils import CustomSubset, split_noniid
 
 
@@ -14,7 +16,11 @@ def _client_transform(client_id, rotation_clients, rotation_degrees):
 
 
 def make_cfl_partition(args):
-    data_root = Path(args.cfl_data_root)
+    if has_partitioned_data(args.dataset):
+        client_data, test_data = make_partitioned_cfl_data(args)
+        return client_data, test_data, None
+
+    data_root = resolve_torchvision_root(args.cfl_data_root, "EMNIST")
     data = datasets.EMNIST(root=str(data_root), split=args.cfl_split, download=args.cfl_download)
 
     idcs = np.random.permutation(len(data))
@@ -39,5 +45,3 @@ def make_cfl_partition(args):
 
     test_data = CustomSubset(data, test_idcs, transforms.Compose([transforms.ToTensor()]))
     return client_data, test_data, client_idcs
-
-

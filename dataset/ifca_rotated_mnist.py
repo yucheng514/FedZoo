@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import torch
 from torchvision import datasets, transforms
 
+from dataset.download_paths import resolve_torchvision_root
 
 @dataclass
 class IFCATensorClient:
@@ -56,14 +57,15 @@ def _build_split_clients(images, labels, num_clients, num_clusters):
 
 def make_ifca_rotated_mnist_clients(args):
     transform = transforms.ToTensor()
+    data_root = resolve_torchvision_root(args.ifca_data_root, "MNIST")
     train_set = datasets.MNIST(
-        root=args.ifca_data_root,
+        root=str(data_root),
         train=True,
         download=args.ifca_download,
         transform=transform,
     )
     test_set = datasets.MNIST(
-        root=args.ifca_data_root,
+        root=str(data_root),
         train=False,
         download=args.ifca_download,
         transform=transform,

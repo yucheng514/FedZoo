@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from clients.clientMCFL import MCFLClient
+from dataset.shared_fl import has_partitioned_data
 from utils.data_utils import read_client_data
 
 
@@ -111,12 +112,20 @@ def _make_real_clients(args):
             support_ratio=args.mcfl_support_ratio,
             seed=args.mcfl_seed + cid,
         )
+        test_samples = read_client_data(args.dataset, cid, is_train=False, few_shot=args.few_shot)
+        test_dataset, _ = _stack_samples_for_backbone(
+            test_samples,
+            use_cnn=use_cnn,
+            label_to_index=label_to_index,
+        )
+        test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
 
         clients.append(
             MCFLClient(
                 client_id=cid,
                 support_loader=support_loader,
                 query_loader=query_loader,
+                test_loader=test_loader,
                 device=args.device,
                 local_epochs=args.local_epochs,
             )
@@ -164,6 +173,7 @@ def _make_synthetic_clients(args):
                 client_id=cid,
                 support_loader=support_loader,
                 query_loader=query_loader,
+                test_loader=query_loader,
                 device=args.device,
                 local_epochs=args.local_epochs,
             )
@@ -175,7 +185,7 @@ def _make_synthetic_clients(args):
 def make_mcfl_clients(args):
     if args.dataset in IMAGE_DATASETS:
         try:
-            if Path(f"./dataset/data/{args.dataset}").exists():
+            if has_partitioned_data(args.dataset) or Path(f"./dataset/data/{args.dataset}").exists():
                 return _make_real_clients(args)
         except Exception as exc:
             print(f"[MCFL] Falling back to synthetic benchmark: {exc}")
@@ -186,5 +196,4 @@ def make_mcfl_clients(args):
 # Backward-compatible alias.
 def make_synthetic_clients(args):
     return make_mcfl_clients(args)
-
 

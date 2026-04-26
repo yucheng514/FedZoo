@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torchvision import datasets
 
+from dataset.download_paths import resolve_torchvision_root
 
 class IFCATensorClient:
     def __init__(self, train_x, train_y, test_x, test_y, cluster_id):
@@ -41,7 +42,7 @@ def _dirichlet_partition(labels, num_clients, alpha, seed):
 
 
 def make_ifca_emnist_clients(args):
-    data_root = Path(args.ifca_data_root)
+    data_root = resolve_torchvision_root(args.ifca_data_root, "EMNIST")
     train_set = datasets.EMNIST(root=str(data_root), split=args.ifca_emnist_split, train=True, download=args.ifca_download)
     test_set = datasets.EMNIST(root=str(data_root), split=args.ifca_emnist_split, train=False, download=args.ifca_download)
 

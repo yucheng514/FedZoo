@@ -54,7 +54,7 @@ def build_parser():
 
     # CFL-specific arguments.
     parser.add_argument('--cfl_seed', type=int, default=42)
-    parser.add_argument('--cfl_data_root', type=str, default='.')
+    parser.add_argument('--cfl_data_root', type=str, default='dataset/data')
     parser.add_argument('--cfl_split', type=str, default='byclass')
     parser.add_argument('--cfl_dirichlet_alpha', type=float, default=1.0)
     parser.add_argument('--cfl_train_samples', type=int, default=10000)
@@ -74,7 +74,7 @@ def build_parser():
     parser.add_argument('--ifca_clusters', type=int, default=2)
     parser.add_argument('--ifca_tau', type=int, default=1, help='Local epochs per IFCA round.')
     parser.add_argument('--ifca_mode', type=str, default='clustered', choices=['clustered', 'oneshot', 'local'])
-    parser.add_argument('--ifca_data_root', type=str, default='.')
+    parser.add_argument('--ifca_data_root', type=str, default='dataset/data')
     parser.add_argument('--ifca_download', dest='ifca_download', action='store_true', default=True)
     parser.add_argument('--ifca_no_download', dest='ifca_download', action='store_false')
     parser.add_argument('--ifca_mnist_hidden_dim', type=int, default=200)

@@ -7,10 +7,11 @@ from utils.mcfl_utils import clone_params_dict, vectorize_params_dict
 
 
 class MCFLClient:
-    def __init__(self, client_id, support_loader, query_loader, device="cpu", local_epochs=1):
+    def __init__(self, client_id, support_loader, query_loader, test_loader=None, device="cpu", local_epochs=1):
         self.client_id = client_id
         self.support_loader = support_loader
         self.query_loader = query_loader
+        self.test_loader = test_loader if test_loader is not None else query_loader
         self.device = device
         self.local_epochs = local_epochs
         self.cluster_id = 0
@@ -116,3 +117,17 @@ class MCFLClient:
 
         return meta_grads, update_vec, stats
 
+    def evaluate(self, model):
+        model = model.to(self.device)
+        model.eval()
+        total = 0
+        correct = 0
+        with torch.no_grad():
+            for x, y in self.test_loader:
+                x = x.to(self.device)
+                y = y.to(self.device)
+                logits = model(x)
+                preds = torch.argmax(logits, dim=1)
+                correct += (preds == y).sum().item()
+                total += y.size(0)
+        return correct / max(total, 1)

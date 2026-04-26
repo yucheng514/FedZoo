@@ -6,12 +6,13 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from dataset_utils import check, separate_data, split_data, save_file
+from pathlib import Path
 
 
 random.seed(1)
 np.random.seed(1)
 num_clients = 20
-dir_path = "./data/Cifar10/"
+dir_path = str((Path(__file__).resolve().parent / "data" / "Cifar10").resolve()) + "/"
 
 
 # Allocate data to users
