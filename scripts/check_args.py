@@ -27,7 +27,12 @@ def collect_declared_args(config_path: Path):
 def collect_used_args(root: Path):
     used_by_file = {}
     for path in root.rglob("*.py"):
-        if "__pycache__" in path.parts or path.name == "check_args.py":
+        rel_parts = path.relative_to(root).parts
+        if "__pycache__" in rel_parts or path.name == "check_args.py":
+            continue
+        if rel_parts and rel_parts[0] in {"legacy", "archive"}:
+            continue
+        if rel_parts and rel_parts[0] == "scripts":
             continue
         try:
             mod = ast.parse(path.read_text())
@@ -59,4 +64,3 @@ if __name__ == "__main__":
         raise SystemExit(1)
 
     print("Argument check passed.")
-

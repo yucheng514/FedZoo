@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict
 from contextlib import contextmanager
+import copy
 from pathlib import Path
 import sys
 
@@ -254,11 +255,119 @@ def run_cfl(args):
     return server, clients, cfl_stats
 
 
+def run_ifca(args):
+    from clients.clientIFCA import IFCAClient
+    from models.ifca_models import IFCALinearRegressor, IFCAMLPClassifier, IFCASmallCNN
+    from servers.serverIFCA import IFCAServer
+
+    set_seed(args.ifca_seed)
+
+    dataset_name = args.dataset.upper()
+    if dataset_name == "MNIST":
+        from dataset.ifca_rotated_mnist import make_ifca_rotated_mnist_clients
+
+        raw_clients = make_ifca_rotated_mnist_clients(args)
+        cluster_models = [
+            IFCAMLPClassifier(
+                input_dim=28 * 28,
+                hidden_dim=args.ifca_mnist_hidden_dim,
+                num_classes=args.num_classes,
+            )
+            for _ in range(args.ifca_clusters)
+        ]
+        criterion = torch.nn.CrossEntropyLoss()
+        task = "classification"
+    elif dataset_name == "CIFAR10":
+        from dataset.ifca_rotated_cifar import make_ifca_rotated_cifar_clients
+
+        raw_clients = make_ifca_rotated_cifar_clients(args)
+        cluster_models = [IFCASmallCNN(in_channels=3, num_classes=args.num_classes, classifier_dim=1600) for _ in range(args.ifca_clusters)]
+        criterion = torch.nn.CrossEntropyLoss()
+        task = "classification"
+    elif dataset_name in {"FEMNIST", "EMNIST"}:
+        from dataset.ifca_emnist import make_ifca_emnist_clients
+
+        raw_clients = make_ifca_emnist_clients(args)
+        cluster_models = [IFCASmallCNN(in_channels=1, num_classes=args.num_classes, classifier_dim=1024) for _ in range(args.ifca_clusters)]
+        criterion = torch.nn.CrossEntropyLoss()
+        task = "classification"
+    elif dataset_name in {"IFCA_SYNTHETIC", "SYNTHETIC"}:
+        from dataset.ifca_synthetic import make_ifca_synthetic_clients
+
+        raw_clients, true_params = make_ifca_synthetic_clients(args)
+        cluster_models = [IFCALinearRegressor(input_dim=args.ifca_synthetic_dim) for _ in range(args.ifca_clusters)]
+        criterion = torch.nn.MSELoss()
+        task = "regression"
+        print(f"True synthetic cluster parameters: {tuple(true_params.shape)}")
+    else:
+        raise ValueError(
+            f"IFCA currently supports dataset=MNIST, CIFAR10, FEMNIST/EMNIST, or IFCA_SYNTHETIC, got {args.dataset}"
+        )
+
+    if args.ifca_mode == "local":
+        cluster_models = [copy.deepcopy(cluster_models[0]) for _ in range(len(raw_clients))]
+    clients = [IFCAClient(client_id=i, data=data, task=task, device=args.device) for i, data in enumerate(raw_clients)]
+    server = IFCAServer(
+        cluster_models=[model.to(args.device) for model in cluster_models],
+        clients=clients,
+        criterion=criterion,
+        task=task,
+        device=args.device,
+        mode=args.ifca_mode,
+        freeze_backbone=args.ifca_freeze_backbone,
+    )
+
+    if args.ifca_checkpoint and Path(args.ifca_checkpoint).exists():
+        saved = torch.load(args.ifca_checkpoint, map_location="cpu")
+        for model, state in zip(server.cluster_models, saved["cluster_models"]):
+            model.load_state_dict(state)
+
+    if args.ifca_mode == "oneshot":
+        server.initialize_fixed_assignments(strategy=args.ifca_init_strategy)
+    elif args.ifca_init_rounds > 0:
+        if args.ifca_init_strategy == "random":
+            assignments = [client.id % len(server.cluster_models) for client in clients]
+        else:
+            assignments = server.assign_clients()
+        server.warmstart_clusters(assignments=assignments, lr=args.local_learning_rate, local_epochs=args.ifca_tau, rounds=args.ifca_init_rounds)
+
+    initial = server.evaluate()
+    print(f"Round -01 | train_loss={initial['train_loss']:.4f} | cluster_acc={initial['cluster_acc']:.4f} | assignments={initial['assignment_hist']}")
+    if task == "regression":
+        print(f"Round -01 | test_mse={initial['test_mse']:.4f}")
+    else:
+        print(f"Round -01 | test_acc={initial['test_acc']:.4f}")
+
+    for rnd in range(args.global_rounds):
+        server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau)
+        eval_stats = server.evaluate()
+        line = (
+            f"Round {rnd:03d} | "
+            f"train_loss={eval_stats['train_loss']:.4f} | "
+            f"cluster_acc={eval_stats['cluster_acc']:.4f} | "
+            f"assignments={eval_stats['assignment_hist']}"
+        )
+        if task == "regression":
+            line += f" | test_mse={eval_stats['test_mse']:.4f}"
+        else:
+            line += f" | test_acc={eval_stats['test_acc']:.4f}"
+        print(line)
+
+    if args.ifca_checkpoint:
+        checkpoint_path = Path(args.ifca_checkpoint)
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"cluster_models": [model.cpu().state_dict() for model in server.cluster_models]}, checkpoint_path)
+
+    return server
+
+
 def run(args):
     if args.algorithm == "CFL":
         run_cfl(args)
     elif args.algorithm == "MCFL":
         run_mcfl(args)
+    elif args.algorithm == "IFCA":
+        run_ifca(args)
     else:
         run_fedavg(args)
 

@@ -68,6 +68,26 @@ def build_parser():
     parser.add_argument('--cfl_plot_every', type=int, default=0, help='Plot CFL stats every N rounds; 0 disables plotting.')
     parser.add_argument('--cfl_download', dest='cfl_download', action='store_true', default=True)
     parser.add_argument('--cfl_no_download', dest='cfl_download', action='store_false')
+
+    # IFCA-specific arguments.
+    parser.add_argument('--ifca_seed', type=int, default=42)
+    parser.add_argument('--ifca_clusters', type=int, default=2)
+    parser.add_argument('--ifca_tau', type=int, default=1, help='Local epochs per IFCA round.')
+    parser.add_argument('--ifca_mode', type=str, default='clustered', choices=['clustered', 'oneshot', 'local'])
+    parser.add_argument('--ifca_data_root', type=str, default='.')
+    parser.add_argument('--ifca_download', dest='ifca_download', action='store_true', default=True)
+    parser.add_argument('--ifca_no_download', dest='ifca_download', action='store_false')
+    parser.add_argument('--ifca_mnist_hidden_dim', type=int, default=200)
+    parser.add_argument('--ifca_init_rounds', type=int, default=0, help='Warm-start cluster models with fixed assignments.')
+    parser.add_argument('--ifca_init_strategy', type=str, default='random', choices=['random', 'loss'])
+    parser.add_argument('--ifca_freeze_backbone', action='store_true', help='Only train the classifier head when supported by the model.')
+    parser.add_argument('--ifca_dirichlet_alpha', type=float, default=0.5)
+    parser.add_argument('--ifca_emnist_split', type=str, default='byclass')
+    parser.add_argument('--ifca_synthetic_dim', type=int, default=1000)
+    parser.add_argument('--ifca_synthetic_samples', type=int, default=100)
+    parser.add_argument('--ifca_synthetic_noise', type=float, default=1e-3)
+    parser.add_argument('--ifca_synthetic_separation', type=float, default=1.0)
+    parser.add_argument('--ifca_checkpoint', type=str, default='', help='Optional path to save/load IFCA cluster models.')
     return parser
 
 
@@ -86,6 +106,7 @@ def validate_args(args):
         "FedAvg": ["model", "join_ratio", "eval_gap"],
         "MCFL": ["mcfl_seed", "mcfl_backbone", "mcfl_hidden_dim", "mcfl_num_clusters"],
         "CFL": ["cfl_seed", "cfl_split", "cfl_dirichlet_alpha", "cfl_momentum", "train_frac"],
+        "IFCA": ["ifca_seed", "ifca_clusters", "ifca_tau", "ifca_mode"],
     }
 
     missing = [name for name in required_common if not hasattr(args, name)]
