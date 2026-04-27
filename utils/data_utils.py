@@ -4,7 +4,19 @@ import torch
 from collections import defaultdict
 
 
+_DATASET_ALIASES = {
+    "CIFAR10": "Cifar10",
+    "CIFAR-10": "Cifar10",
+}
+
+
+def canonical_dataset_name(dataset):
+    dataset = str(dataset)
+    return _DATASET_ALIASES.get(dataset.upper(), dataset)
+
+
 def read_data(dataset, idx, is_train=True):
+    dataset = canonical_dataset_name(dataset)
     if is_train:
         data_dir = os.path.join('./dataset/data', dataset, 'train/')
     else:

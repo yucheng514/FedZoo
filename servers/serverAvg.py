@@ -63,6 +63,14 @@ class FedAvg(Server):
         self.save_results()
         self.save_global_model()
 
+        if self.num_new_clients > 0 and getattr(self.args, "eval_new_clients", False):
+            print("\n-------------Fine tuning new clients-------------")
+            self.set_new_clients(clientAVG)
+            self.eval_new_clients = True
+            print("\nEvaluate fine-tuned new clients")
+            self.evaluate()
+            self.save_results()
+
         # 客户端拿到最终的模型后做本地微调，用来作为pFL的baseline
         #todo ft暂时不做
         # if self.num_new_clients > 0:

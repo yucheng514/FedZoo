@@ -5,10 +5,11 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from clients.clientMCFL import MCFLClient
 from dataset.shared_fl import has_partitioned_data
+from utils.data_utils import canonical_dataset_name
 from utils.data_utils import read_client_data
 
 
-IMAGE_DATASETS = {"MNIST", "Cifar10", "EMNIST"}
+IMAGE_DATASETS = {"MNIST", "CIFAR10", "Cifar10", "EMNIST"}
 
 
 def _stack_image_samples(samples):
@@ -89,19 +90,20 @@ def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed):
 
 def _make_real_clients(args):
     clients = []
-    use_cnn = args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and args.dataset in IMAGE_DATASETS)
+    dataset_name = canonical_dataset_name(args.dataset)
+    use_cnn = args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and dataset_name.upper() in IMAGE_DATASETS)
     inferred_input_dim = None
     label_to_index = {}
 
     for cid in range(args.num_clients):
-        train_samples = read_client_data(args.dataset, cid, is_train=True, few_shot=args.few_shot)
+        train_samples = read_client_data(dataset_name, cid, is_train=True, few_shot=args.few_shot)
         dataset, feature_dim = _stack_samples_for_backbone(
             train_samples,
             use_cnn=use_cnn,
             label_to_index=label_to_index,
         )
         if dataset is None:
-            raise ValueError(f"Dataset {args.dataset} is not image-like for MCFL.")
+            raise ValueError(f"Dataset {dataset_name} is not image-like for MCFL.")
 
         if not use_cnn and inferred_input_dim is None:
             inferred_input_dim = feature_dim
@@ -112,7 +114,7 @@ def _make_real_clients(args):
             support_ratio=args.mcfl_support_ratio,
             seed=args.mcfl_seed + cid,
         )
-        test_samples = read_client_data(args.dataset, cid, is_train=False, few_shot=args.few_shot)
+        test_samples = read_client_data(dataset_name, cid, is_train=False, few_shot=args.few_shot)
         test_dataset, _ = _stack_samples_for_backbone(
             test_samples,
             use_cnn=use_cnn,
@@ -183,9 +185,10 @@ def _make_synthetic_clients(args):
 
 
 def make_mcfl_clients(args):
-    if args.dataset in IMAGE_DATASETS:
+    dataset_name = canonical_dataset_name(args.dataset)
+    if dataset_name.upper() in IMAGE_DATASETS:
         try:
-            if has_partitioned_data(args.dataset) or Path(f"./dataset/data/{args.dataset}").exists():
+            if has_partitioned_data(dataset_name) or Path(f"./dataset/data/{dataset_name}").exists():
                 return _make_real_clients(args)
         except Exception as exc:
             print(f"[MCFL] Falling back to synthetic benchmark: {exc}")

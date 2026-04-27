@@ -3,7 +3,7 @@ import os
 import torch
 from torch.utils.data import ConcatDataset, TensorDataset
 
-from utils.data_utils import read_client_data
+from utils.data_utils import canonical_dataset_name, read_client_data
 
 
 class SharedTensorClient:
@@ -25,6 +25,7 @@ class SharedTensorClient:
 
 
 def has_partitioned_data(dataset):
+    dataset = canonical_dataset_name(dataset)
     train_dir = os.path.join("./dataset/data", dataset, "train")
     test_dir = os.path.join("./dataset/data", dataset, "test")
     return os.path.isdir(train_dir) and os.path.isdir(test_dir)

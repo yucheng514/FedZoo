@@ -34,6 +34,8 @@ class Server(object):
         self.save_folder_name = args.save_folder_name
         self.top_cnt = args.top_cnt
         self.auto_break = args.auto_break
+        self.num_new_clients = args.num_new_clients
+        self.fine_tuning_epoch_new = getattr(args, "fine_tuning_epoch_new", 0)
 
         self.clients = []
         self.selected_clients = []
@@ -58,10 +60,8 @@ class Server(object):
 #         self.dlg_gap = args.dlg_gap
 #         self.batch_num_per_client = args.batch_num_per_client
 #
-#         self.num_new_clients = args.num_new_clients
         self.new_clients = []
         self.eval_new_clients = False
-#         self.fine_tuning_epoch_new = args.fine_tuning_epoch_new
 #
     def set_clients(self, clientObj):
         for i, train_slow, send_slow in zip(range(self.num_clients), self.train_slow_clients, self.send_slow_clients):
@@ -371,3 +371,25 @@ class Server(object):
         ids = [c.id for c in self.new_clients]
 
         return ids, num_samples, tot_correct, tot_auc
+
+    def set_new_clients(self, clientObj):
+        self.new_clients = []
+        for i in range(self.num_clients, self.num_clients + self.num_new_clients):
+            train_data = read_client_data(self.dataset, i, is_train=True, few_shot=self.few_shot)
+            test_data = read_client_data(self.dataset, i, is_train=False, few_shot=self.few_shot)
+            client = clientObj(
+                self.args,
+                id=i,
+                train_samples=len(train_data),
+                test_samples=len(test_data),
+                train_slow=False,
+                send_slow=False,
+            )
+            self.new_clients.append(client)
+
+    def fine_tuning_new_clients(self):
+        for client in self.new_clients:
+            client.set_parameters(self.global_model)
+            client.local_epochs = self.fine_tuning_epoch_new
+            client.train()
+

@@ -56,17 +56,18 @@ This repository now contains the original FedAvg pipeline plus integrated MCFL, 
 ## Run examples
 
 ```bash
-python main.py -al FedAvg
-python main.py -al MCFL -gr 10 -nc 20 -ncl 10 --mcfl_backbone auto
+python main.py -al FedAvg -data CIFAR10 -gr 100 -nc 20 -ncl 10 --log_file logs/fedavg_cifar10.log
+python main.py -al FedAvg -data CIFAR10 -gr 100 -nc 18 -nnc 2 -ncl 10 --eval_new_clients --fine_tuning_epoch_new 5 --log_file logs/fedavg_ft_cifar10.log
+python main.py -al MCFL -data CIFAR10 -gr 100 -nc 20 -ncl 10 --mcfl_backbone auto --log_file logs/mcfl_cifar10.log
 python main.py -al CFL -gr 80 -nc 10 -ncl 62 --cfl_dirichlet_alpha 1.0
 python main.py -al IFCA -data IFCA_SYNTHETIC -gr 50 -nc 20 --ifca_clusters 2 --ifca_synthetic_dim 100
 python main.py -al IFCA -data MNIST -gr 30 -nc 20 -ncl 10 --ifca_clusters 4 --ifca_tau 5
 python main.py -al IFCA -data CIFAR10 -gr 20 -nc 20 -ncl 10 --ifca_clusters 4 --ifca_mode clustered
 python main.py -al IFCA -data FEMNIST -gr 20 -nc 20 -ncl 62 --ifca_clusters 4 --ifca_mode oneshot --ifca_freeze_backbone
-python main.py -al MCFL -gr 10 --log_file logs/mcfl_seed1.txt
+python main.py -al MCFL -data CIFAR10 -gr 10 --log_file logs/mcfl_seed1.txt
+```
 
 ## IFCA experiment scripts
 
 - `python scripts/run_ifca_synthetic_grid.py`
 - `python scripts/run_ifca_image_modes.py --dataset MNIST`
-```

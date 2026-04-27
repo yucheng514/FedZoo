@@ -21,6 +21,8 @@ def build_parser():
     parser.add_argument('-sfn', "--save_folder_name", type=str, default='items')
     parser.add_argument('--log_file', type=str, default='', help='Optional log file path for cross-platform stdout tee')
     parser.add_argument('--log_append', action='store_true', help='Append to log file instead of overwrite')
+    parser.add_argument('--eval_new_clients', action='store_true', help='Enable post-training fine-tuning/evaluation on held-out clients for FedAvg')
+    parser.add_argument('--fine_tuning_epoch_new', type=int, default=5, help='Local fine-tuning epochs for held-out FedAvg clients')
 
     # FedAvg-specific arguments.
     parser.add_argument('-m', "--model", type=str, default="CNN")
@@ -117,6 +119,13 @@ def validate_args(args):
             f"Missing CLI args for algorithm={args.algorithm}: {sorted(set(missing))}. "
             "Check config.build_parser() argument definitions."
         )
+
+    if getattr(args, "eval_new_clients", False) and getattr(args, "num_new_clients", 0) <= 0:
+        raise ValueError(
+            "--eval_new_clients requires --num_new_clients > 0 so the FedAvg fine-tuning baseline has held-out clients."
+        )
+    if getattr(args, "eval_new_clients", False) and getattr(args, "fine_tuning_epoch_new", 0) <= 0:
+        raise ValueError("--eval_new_clients requires --fine_tuning_epoch_new > 0.")
 
 
 def resolve_device(args):
