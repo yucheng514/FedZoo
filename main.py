@@ -323,9 +323,14 @@ def run_ifca(args):
         criterion = torch.nn.CrossEntropyLoss()
         task = "classification"
     elif dataset_name == "CIFAR10":
-        from dataset.ifca_rotated_cifar import make_ifca_rotated_cifar_clients
-
-        raw_clients = make_ifca_rotated_cifar_clients(args)
+        # Check if pre-partitioned CIFAR10 data exists (from dataset generation)
+        if has_partitioned_data(args.dataset):
+            from dataset.ifca_partitioned_cifar import make_ifca_partitioned_cifar_clients
+            raw_clients = make_ifca_partitioned_cifar_clients(args)
+            print(f"Using pre-partitioned CIFAR10 data for IFCA (skipping download)")
+        else:
+            from dataset.ifca_rotated_cifar import make_ifca_rotated_cifar_clients
+            raw_clients = make_ifca_rotated_cifar_clients(args)
         cluster_models = [IFCASmallCNN(in_channels=3, num_classes=args.num_classes, classifier_dim=1600) for _ in range(args.ifca_clusters)]
         criterion = torch.nn.CrossEntropyLoss()
         task = "classification"

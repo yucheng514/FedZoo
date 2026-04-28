@@ -2,11 +2,17 @@ import numpy as np
 import os
 import sys
 import random
+from pathlib import Path
+
+# Ensure repo root is in path for package imports
+repo_root = str(Path(__file__).resolve().parent.parent)
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from dataset_utils import check, separate_data, split_data, save_file
-from pathlib import Path
+from dataset.dataset_utils import check, separate_data, split_data, save_file
 
 
 random.seed(1)
