@@ -45,10 +45,11 @@ def make_ifca_partitioned_cifar_clients(args):
         test_samples = read_client_data(args.dataset, cid, is_train=False, few_shot=args.few_shot)
         train_x, train_y = _stack_samples(train_samples, flatten=False)
         test_x, test_y = _stack_samples(test_samples, flatten=False)
-
-        # Assign cluster_id based on modulo (similar to how partitioned MNIST works in main.py)
-        cluster_id = cid % args.ifca_clusters
-
+        
+        # cluster_id=-1 means unknown (no true cluster labels in real data)
+        # IFCA will learn cluster assignments from data during training
+        cluster_id = -1
+        
         clients.append(
             IFCATensorClient(
                 train_x=train_x,
