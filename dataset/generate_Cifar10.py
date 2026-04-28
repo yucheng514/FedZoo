@@ -74,6 +74,10 @@ def generate_dataset(dir_path, num_clients, niid, balance, partition):
 if __name__ == "__main__":
     niid = True if sys.argv[1] == "noniid" else False
     balance = True if sys.argv[2] and sys.argv[2] == "balance" else False
-    partition = sys.argv[3] if sys.argv[3] != "-" else None
+    partition = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "-" else None
+    if niid and partition is None:
+        # CIFAR-10 默认使用 pat 切分；这样 `python dataset/generate_Cifar10.py noniid balance -`
+        # 也能正常工作，不会落入 separate_data() 的 NotImplementedError 分支。
+        partition = "pat"
 
     generate_dataset(dir_path, num_clients, niid, balance, partition)
