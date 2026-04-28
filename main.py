@@ -409,6 +409,52 @@ def run_ifca(args):
     return server
 
 
+def run_perfedavg(args):
+    """运行 Per-FedAvg 算法"""
+    from models.models import FedAvgCNN
+    from servers.serverPerFedAvg import serverPerFedAvg
+
+    time_list = []
+    model_str = args.model
+    dataset_name = args.dataset.upper()
+
+    for i in range(0, 1):
+        print("Creating server and clients ...")
+        start = time.time()
+        if model_str == "CNN":
+            if dataset_name in {"MNIST", "EMNIST", "FEMNIST"}:
+                args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
+            elif dataset_name == "CIFAR10":
+                args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
+
+        server = serverPerFedAvg(args, i)
+        server.train()
+        time_list.append(time.time() - start)
+
+
+def run_pfedme(args):
+    """运行 pFedMe 算法"""
+    from models.models import FedAvgCNN
+    from servers.serverpFedMe import serverpFedMe
+
+    time_list = []
+    model_str = args.model
+    dataset_name = args.dataset.upper()
+
+    for i in range(0, 1):
+        print("Creating server and clients ...")
+        start = time.time()
+        if model_str == "CNN":
+            if dataset_name in {"MNIST", "EMNIST", "FEMNIST"}:
+                args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
+            elif dataset_name == "CIFAR10":
+                args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
+
+        server = serverpFedMe(args, i)
+        server.train()
+        time_list.append(time.time() - start)
+
+
 def run(args):
     if args.algorithm == "CFL":
         run_cfl(args)
@@ -416,6 +462,10 @@ def run(args):
         run_mcfl(args)
     elif args.algorithm == "IFCA":
         run_ifca(args)
+    elif args.algorithm in {"PerFedAvg", "PerAvg"}:
+        run_perfedavg(args)
+    elif args.algorithm == "pFedMe":
+        run_pfedme(args)
     else:
         run_fedavg(args)
 

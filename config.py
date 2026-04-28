@@ -24,6 +24,12 @@ def build_parser():
     parser.add_argument('--eval_new_clients', action='store_true', help='Enable post-training fine-tuning/evaluation on held-out clients for FedAvg')
     parser.add_argument('--fine_tuning_epoch_new', type=int, default=5, help='Local fine-tuning epochs for held-out FedAvg clients')
 
+    # Per-FedAvg and pFedMe specific arguments
+    parser.add_argument('--beta', type=float, default=0.5, help='Personalized/global interpolation factor for pFedMe')
+    parser.add_argument('--lamda', type=float, default=15.0, help='Regularization strength for pFedMe')
+    parser.add_argument('--K', type=int, default=5, help='Inner personalized steps per pFedMe batch')
+    parser.add_argument('--p_learning_rate', type=float, default=0.01, help='Personalized learning rate for pFedMe')
+
     # FedAvg-specific arguments.
     parser.add_argument('-m', "--model", type=str, default="CNN")
     parser.add_argument('-jr', "--join_ratio", type=float, default=1.0, help="Ratio of clients per round")
@@ -109,6 +115,9 @@ def validate_args(args):
         "MCFL": ["mcfl_seed", "mcfl_backbone", "mcfl_hidden_dim", "mcfl_num_clusters"],
         "CFL": ["cfl_seed", "cfl_split", "cfl_dirichlet_alpha", "cfl_momentum", "train_frac"],
         "IFCA": ["ifca_seed", "ifca_clusters", "ifca_tau", "ifca_mode"],
+        "PerFedAvg": ["model", "join_ratio", "eval_gap"],
+        "PerAvg": ["model", "join_ratio", "eval_gap"],
+        "pFedMe": ["model", "join_ratio", "eval_gap", "beta", "lamda", "K", "p_learning_rate"],
     }
 
     missing = [name for name in required_common if not hasattr(args, name)]
