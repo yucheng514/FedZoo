@@ -38,6 +38,12 @@ def kmeans_cluster(embeddings, num_clusters, seed=42):
     if n_points < num_clusters:
         return np.arange(n_points) % num_clusters
 
+    if not np.isfinite(points).all():
+        points = np.nan_to_num(points, nan=0.0, posinf=1e6, neginf=-1e6)
+
+    if np.allclose(points, points[0], atol=1e-8, rtol=1e-5):
+        return np.arange(n_points) % num_clusters
+
     if KMeans is not None:
         kmeans = KMeans(n_clusters=num_clusters, n_init=10, random_state=seed)
         return kmeans.fit_predict(points)

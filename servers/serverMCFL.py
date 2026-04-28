@@ -2,6 +2,7 @@ import copy
 from collections import defaultdict
 
 import torch
+import torch.nn.functional as F
 
 from models.mcfl_models import MCFLClientEncoder
 from utils.mcfl_clustering import kmeans_cluster
@@ -32,6 +33,16 @@ class MCFLServer:
         self.encoder = MCFLClientEncoder(update_dim, encoder_embed_dim).to(device)
         self.encoder_optimizer = torch.optim.Adam(self.encoder.parameters(), lr=1e-3)
 
+    def _sanitize_update_matrix(self, update_mat):
+        finite_mask = torch.isfinite(update_mat)
+        if finite_mask.all():
+            return update_mat, 0
+
+        cleaned = torch.nan_to_num(update_mat.detach(), nan=0.0, posinf=1e6, neginf=-1e6)
+        cleaned = torch.clamp(cleaned, min=-1e6, max=1e6)
+        bad_rows = (~finite_mask).any(dim=1).sum().item()
+        return cleaned, int(bad_rows)
+
     def assign_initial_clusters(self, clients):
         for i, client in enumerate(clients):
             client.cluster_id = i % self.num_clusters
@@ -59,7 +70,16 @@ class MCFLServer:
     def recluster_clients(self, clients, client_update_vecs):
         with torch.no_grad():
             update_mat = torch.stack(client_update_vecs, dim=0).to(self.device)
-            embeddings = self.encoder(update_mat).detach().cpu().numpy()
+            update_mat, bad_rows = self._sanitize_update_matrix(update_mat)
+            if bad_rows > 0:
+                print(f"[MCFL] Recluster sanitized {bad_rows} client update vectors with non-finite values.")
+
+            embeddings = self.encoder(update_mat)
+            if not torch.isfinite(embeddings).all():
+                embeddings = F.normalize(torch.nan_to_num(embeddings, nan=0.0, posinf=1e6, neginf=-1e6), dim=-1)
+                print("[MCFL] Recluster sanitized non-finite encoder embeddings.")
+
+            embeddings = embeddings.detach().cpu().numpy()
 
         assignments = kmeans_cluster(
             embeddings,
@@ -94,4 +114,3 @@ class MCFLServer:
             self.recluster_clients(clients, client_update_vecs)
 
         return stats_list
-
