@@ -1,4 +1,5 @@
 import copy
+import warnings
 import torch
 import torch.nn as nn
 import numpy as np
@@ -65,6 +66,33 @@ class Client(object):
     def set_parameters(self, model):
         for new_param, old_param in zip(model.parameters(), self.model.parameters()):
             old_param.data = new_param.data.clone()
+
+    def _safe_auc(self, y_true, y_prob):
+        y_prob = np.asarray(y_prob)
+        if not np.isfinite(y_prob).all():
+            warnings.warn(
+                f"Client {self.id} produced non-finite scores during AUC evaluation; replacing NaN/Inf with finite values.",
+                RuntimeWarning,
+            )
+            finite_vals = y_prob[np.isfinite(y_prob)]
+            if finite_vals.size == 0:
+                y_prob = np.zeros_like(y_prob)
+            else:
+                y_prob = np.nan_to_num(
+                    y_prob,
+                    nan=0.0,
+                    posinf=float(np.max(finite_vals)),
+                    neginf=float(np.min(finite_vals)),
+                )
+
+        try:
+            return metrics.roc_auc_score(y_true, y_prob, average='micro')
+        except ValueError as exc:
+            warnings.warn(
+                f"Client {self.id} AUC computation failed ({exc}); returning 0.0 instead.",
+                RuntimeWarning,
+            )
+            return 0.0
 #
 #     def clone_model(self, model, target):
 #         for param, target_param in zip(model.parameters(), target.parameters()):
@@ -113,7 +141,7 @@ class Client(object):
         y_prob = np.concatenate(y_prob, axis=0)
         y_true = np.concatenate(y_true, axis=0)
 
-        auc = metrics.roc_auc_score(y_true, y_prob, average='micro')
+        auc = self._safe_auc(y_true, y_prob)
 
         return test_acc, test_num, auc
 
