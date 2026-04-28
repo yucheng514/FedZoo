@@ -37,8 +37,8 @@ class Client(object):
                 self.has_BatchNorm = True
                 break
 
-        # self.train_slow = kwargs['train_slow']
-        # self.send_slow = kwargs['send_slow']
+        self.train_slow = kwargs.get('train_slow', False)
+        self.send_slow = kwargs.get('send_slow', False)
         self.train_time_cost = {'num_rounds': 0, 'total_cost': 0.0}
         self.send_time_cost = {'num_rounds': 0, 'total_cost': 0.0}
 
