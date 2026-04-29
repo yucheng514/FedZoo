@@ -39,8 +39,10 @@ class pFedMeOptimizer(Optimizer):
         for group in self.param_groups:
             for p, localweight in zip(group["params"], weight_update):
                 localweight = localweight.to(device)
-                p.data = p.data - group["lr"] * (
-                    p.grad.data + group["lamda"] * (p.data - localweight.data) + group["mu"] * p.data
+                p.data.add_(
+                    -group["lr"] * (
+                        p.grad.data + group["lamda"] * (p.data - localweight.data) + group["mu"] * p.data
+                    )
                 )
 
         return group["params"]
