@@ -89,6 +89,7 @@ def run_mcfl(args):
     set_seed(args.mcfl_seed)
 
     clients = make_mcfl_clients(args)
+    budget = []
 
     warmup_x, _ = next(iter(clients[0].support_loader))
 
@@ -143,8 +144,10 @@ def run_mcfl(args):
     )
 
     server.assign_initial_clusters(clients)
+    best_test_acc = float("-inf")
 
     for rnd in range(args.global_rounds):
+        s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.mcfl_seed + rnd)
         stats = server.train_round(
             participating_clients,
@@ -186,6 +189,15 @@ def run_mcfl(args):
             f"raw_test_acc={sum(raw_test_accs) / len(raw_test_accs):.4f} | "
             f"clusters={dict(cluster_hist)}"
         )
+        best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
+        budget.append(time.time() - s_t)
+        print('-' * 25, 'time cost', '-' * 25, budget[-1])
+
+    if budget:
+        print("\nBest accuracy.")
+        print(best_test_acc if best_test_acc != float("-inf") else 0.0)
+        print("\nAverage time cost per round.")
+        print(sum(budget) / len(budget))
 
 
 def run_cfl(args):
@@ -366,6 +378,7 @@ def run_ifca(args):
         mode=args.ifca_mode,
         freeze_backbone=args.ifca_freeze_backbone,
     )
+    budget = []
 
     if args.ifca_checkpoint and Path(args.ifca_checkpoint).exists():
         saved = torch.load(args.ifca_checkpoint, map_location="cpu")
@@ -381,6 +394,7 @@ def run_ifca(args):
             assignments = server.assign_clients()
         server.warmstart_clusters(assignments=assignments, lr=args.local_learning_rate, local_epochs=args.ifca_tau, rounds=args.ifca_init_rounds)
 
+    initial_s_t = time.time()
     initial = server.evaluate()
     initial_cluster = "n/a" if initial["cluster_acc"] < 0 else f"{initial['cluster_acc']:.4f}"
     print(f"Round -01 | train_loss={initial['train_loss']:.4f} | cluster_acc={initial_cluster} | assignments={initial['assignment_hist']}")
@@ -388,8 +402,13 @@ def run_ifca(args):
         print(f"Round -01 | test_mse={initial['test_mse']:.4f}")
     else:
         print(f"Round -01 | test_acc={initial['test_acc']:.4f}")
+    initial_time = time.time() - initial_s_t
+    print('-' * 25, 'time cost', '-' * 25, initial_time)
+    budget.append(initial_time)
+    best_test_acc = initial["test_acc"] if task != "regression" else float("-inf")
 
     for rnd in range(args.global_rounds):
+        s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.ifca_seed + rnd)
         server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau, clients=participating_clients)
         eval_stats = server.evaluate()
@@ -405,6 +424,19 @@ def run_ifca(args):
         else:
             line += f" | test_acc={eval_stats['test_acc']:.4f}"
         print(line)
+        if task != "regression":
+            best_test_acc = max(best_test_acc, eval_stats["test_acc"])
+        budget.append(time.time() - s_t)
+        print('-' * 25, 'time cost', '-' * 25, budget[-1])
+
+    if budget:
+        print("\nBest accuracy.")
+        if task == "regression":
+            print("n/a")
+        else:
+            print(best_test_acc)
+        print("\nAverage time cost per round.")
+        print(sum(budget) / len(budget))
 
     if args.ifca_checkpoint:
         checkpoint_path = Path(args.ifca_checkpoint)
