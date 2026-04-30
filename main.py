@@ -212,14 +212,20 @@ def run_cfl(args):
     client_data, test_data, _ = make_cfl_partition(args)
 
     dataset_name = args.dataset.upper()
-    if dataset_name in {"MNIST", "EMNIST"} and has_partitioned_data(args.dataset):
+    if has_partitioned_data(args.dataset) and dataset_name in {"MNIST", "EMNIST", "FEMNIST", "CIFAR10"}:
         from models.models import FedAvgCNN
 
-        model_fn = lambda: FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
+        if dataset_name == "CIFAR10":
+            model_fn = lambda: FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600)
+        else:
+            model_fn = lambda: FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024)
     else:
         from models.cfl_models import CFLConvNet
 
-        model_fn = lambda: CFLConvNet(num_classes=args.num_classes)
+        model_fn = lambda: CFLConvNet(
+            num_classes=args.num_classes,
+            in_channels=3 if dataset_name == "CIFAR10" else 1,
+        )
     optimizer_fn = lambda params: torch.optim.SGD(params, lr=args.local_learning_rate, momentum=args.cfl_momentum)
 
     clients = [
