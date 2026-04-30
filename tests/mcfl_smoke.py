@@ -50,7 +50,11 @@ def main():
             outer_lr=5e-2,
             model_mix=0.5,
             device="cpu",
+            total_rounds=3,
             recluster_every=1,
+            recluster_warmup_rounds=0,
+            stop_recluster_after=-1,
+            skip_final_recluster=True,
             cluster_method=cluster_method,
             cluster_feature="head_updates",
         )

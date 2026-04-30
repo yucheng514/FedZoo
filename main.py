@@ -61,6 +61,21 @@ def maybe_log_to_file(log_file, append=False):
             sys.stdout = original_stdout
 
 
+def print_run_summary(args):
+    summary = (
+        f"Run: algorithm={args.algorithm} | dataset={args.dataset} | device={args.device} | "
+        f"rounds={args.global_rounds} | clients={args.num_clients} | local_epochs={args.local_epochs} | "
+        f"lr={args.local_learning_rate} | batch_size={args.batch_size}"
+    )
+    print(summary)
+
+    if getattr(args, "print_args", False):
+        print("=== args " + "=" * 50)
+        for arg in vars(args):
+            print(arg, '=', getattr(args, arg))
+        print("=== args end " + "=" * 46)
+
+
 def run_fedavg(args):
     from models.models import FedAvgCNN
     from servers.serverAvg import FedAvg
@@ -141,7 +156,11 @@ def run_mcfl(args):
         outer_lr=args.mcfl_outer_lr,
         model_mix=args.mcfl_model_mix,
         device=args.device,
+        total_rounds=args.global_rounds,
         recluster_every=args.mcfl_recluster_every,
+        recluster_warmup_rounds=args.mcfl_recluster_warmup_rounds,
+        stop_recluster_after=args.mcfl_stop_recluster_after,
+        skip_final_recluster=args.mcfl_skip_final_recluster,
         cluster_method=args.mcfl_cluster_method,
         cluster_feature=args.mcfl_cluster_feature,
     )
@@ -523,8 +542,5 @@ if __name__ == "__main__":
     resolve_device(args)
     with maybe_log_to_file(args.log_file, append=args.log_append):
         print(f"\nUsing device: {args.device}\n")
-        print("=== args " + "=" * 50)
-        for arg in vars(args):
-            print(arg, '=', getattr(args, arg))
-        print("=== args end " + "=" * 46)
+        print_run_summary(args)
         run(args)

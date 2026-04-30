@@ -18,7 +18,11 @@ class MCFLServer:
         outer_lr=1e-2,
         model_mix=0.5,
         device="cpu",
+        total_rounds=None,
         recluster_every=1,
+        recluster_warmup_rounds=0,
+        stop_recluster_after=-1,
+        skip_final_recluster=True,
         cluster_method="kmeans",
         cluster_feature="updates",
     ):
@@ -26,7 +30,11 @@ class MCFLServer:
         self.num_clusters = num_clusters
         self.outer_lr = outer_lr
         self.model_mix = model_mix
+        self.total_rounds = total_rounds
         self.recluster_every = recluster_every
+        self.recluster_warmup_rounds = recluster_warmup_rounds
+        self.stop_recluster_after = stop_recluster_after
+        self.skip_final_recluster = skip_final_recluster
         self.cluster_method = cluster_method
         self.cluster_feature = cluster_feature
 
@@ -102,6 +110,21 @@ class MCFLServer:
                     mixed = (1.0 - self.model_mix) * value + self.model_mix * averaged_params[name].to(value.device)
                     value.copy_(mixed)
 
+    def _should_recluster(self, round_idx):
+        current_round = round_idx + 1
+
+        if self.recluster_every <= 0:
+            return False
+        if current_round < self.recluster_warmup_rounds:
+            return False
+        if current_round % self.recluster_every != 0:
+            return False
+        if self.stop_recluster_after > 0 and current_round > self.stop_recluster_after:
+            return False
+        if self.skip_final_recluster and self.total_rounds is not None and current_round >= self.total_rounds:
+            return False
+        return True
+
     def aggregate_meta_grads(self, cluster_to_grads):
         for cluster_id in range(self.num_clusters):
             if len(cluster_to_grads[cluster_id]) == 0:
@@ -169,7 +192,7 @@ class MCFLServer:
         self.aggregate_meta_grads(cluster_to_grads)
         self._blend_cluster_models(cluster_to_params)
 
-        if self.recluster_every > 0 and (round_idx + 1) % self.recluster_every == 0:
+        if self._should_recluster(round_idx):
             self.recluster_clients(clients, client_cluster_vecs)
 
         return stats_list

@@ -21,6 +21,7 @@ def build_parser():
     parser.add_argument('-sfn', "--save_folder_name", type=str, default='items')
     parser.add_argument('--log_file', type=str, default='', help='Optional log file path for cross-platform stdout tee')
     parser.add_argument('--log_append', action='store_true', help='Append to log file instead of overwrite')
+    parser.add_argument('--print_args', action='store_true', help='Print the full parsed argument list at startup.')
     parser.add_argument('--eval_new_clients', action='store_true', help='Enable post-training fine-tuning/evaluation on held-out clients for FedAvg')
     parser.add_argument('--fine_tuning_epoch_new', type=int, default=5, help='Local fine-tuning epochs for held-out FedAvg clients')
 
@@ -65,6 +66,31 @@ def build_parser():
     parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
     parser.add_argument('--mcfl_recluster_every', type=int, default=5)
+    parser.add_argument(
+        '--mcfl_recluster_warmup_rounds',
+        type=int,
+        default=5,
+        help='Do not recluster before this many global rounds have completed.',
+    )
+    parser.add_argument(
+        '--mcfl_stop_recluster_after',
+        type=int,
+        default=25,
+        help='Stop reclustering after this round. Use -1 to keep reclustering for the whole run.',
+    )
+    parser.add_argument(
+        '--mcfl_skip_final_recluster',
+        dest='mcfl_skip_final_recluster',
+        action='store_true',
+        default=True,
+        help='Skip reclustering on the final global round to avoid late assignment shocks.',
+    )
+    parser.add_argument(
+        '--mcfl_allow_final_recluster',
+        dest='mcfl_skip_final_recluster',
+        action='store_false',
+        help='Allow reclustering on the final global round.',
+    )
     parser.add_argument(
         '--mcfl_cluster_method',
         type=str,
