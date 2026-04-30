@@ -48,10 +48,11 @@ def main():
             num_clusters=2,
             encoder_embed_dim=8,
             outer_lr=5e-2,
+            model_mix=0.5,
             device="cpu",
             recluster_every=1,
             cluster_method=cluster_method,
-            cluster_feature="updates",
+            cluster_feature="head_updates",
         )
         server.assign_initial_clusters(clients)
 

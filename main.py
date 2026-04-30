@@ -139,6 +139,7 @@ def run_mcfl(args):
         num_clusters=args.mcfl_num_clusters,
         encoder_embed_dim=args.mcfl_encoder_embed_dim,
         outer_lr=args.mcfl_outer_lr,
+        model_mix=args.mcfl_model_mix,
         device=args.device,
         recluster_every=args.mcfl_recluster_every,
         cluster_method=args.mcfl_cluster_method,

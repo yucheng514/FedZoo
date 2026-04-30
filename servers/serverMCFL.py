@@ -16,6 +16,7 @@ class MCFLServer:
         num_clusters,
         encoder_embed_dim=32,
         outer_lr=1e-2,
+        model_mix=0.5,
         device="cpu",
         recluster_every=1,
         cluster_method="kmeans",
@@ -24,6 +25,7 @@ class MCFLServer:
         self.device = device
         self.num_clusters = num_clusters
         self.outer_lr = outer_lr
+        self.model_mix = model_mix
         self.recluster_every = recluster_every
         self.cluster_method = cluster_method
         self.cluster_feature = cluster_feature
@@ -71,6 +73,35 @@ class MCFLServer:
 
         return normalized_updates.detach().cpu().numpy()
 
+    def _blend_cluster_models(self, cluster_to_params):
+        if self.model_mix <= 0:
+            return
+
+        for cluster_id in range(self.num_clusters):
+            if len(cluster_to_params[cluster_id]) == 0:
+                continue
+
+            model = self.cluster_models[cluster_id]
+            total_weight = sum(weight for _, weight in cluster_to_params[cluster_id])
+            if total_weight <= 0:
+                total_weight = float(len(cluster_to_params[cluster_id]))
+
+            averaged_params = {}
+            for name in model.state_dict().keys():
+                stacked = torch.stack(
+                    [params[name].detach().to(self.device) * weight for params, weight in cluster_to_params[cluster_id]],
+                    dim=0,
+                )
+                averaged_params[name] = stacked.sum(dim=0) / total_weight
+
+            with torch.no_grad():
+                state_dict = model.state_dict()
+                for name, value in state_dict.items():
+                    if name not in averaged_params:
+                        continue
+                    mixed = (1.0 - self.model_mix) * value + self.model_mix * averaged_params[name].to(value.device)
+                    value.copy_(mixed)
+
     def aggregate_meta_grads(self, cluster_to_grads):
         for cluster_id in range(self.num_clusters):
             if len(cluster_to_grads[cluster_id]) == 0:
@@ -94,9 +125,9 @@ class MCFLServer:
                 for p, g in zip(model.parameters(), avg_grads):
                     p -= self.outer_lr * g
 
-    def recluster_clients(self, clients, client_update_vecs):
+    def recluster_clients(self, clients, client_cluster_vecs):
         with torch.no_grad():
-            update_mat = torch.stack(client_update_vecs, dim=0).to(self.device)
+            update_mat = torch.stack(client_cluster_vecs, dim=0).to(self.device)
             cluster_points = self._build_cluster_points(update_mat)
 
         if self.cluster_method == "agglomerative":
@@ -116,25 +147,29 @@ class MCFLServer:
 
     def train_round(self, clients, round_idx, inner_lr=0.1, first_order=True, local_epochs=1):
         cluster_to_grads = defaultdict(list)
-        client_update_vecs = []
+        cluster_to_params = defaultdict(list)
+        client_cluster_vecs = []
         stats_list = []
 
         for client in clients:
             model = self.cluster_models[client.cluster_id]
-            meta_grads, update_vec, stats = client.local_adapt_and_meta_grad(
+            meta_grads, update_vec, head_update_vec, adapted_params, stats = client.local_adapt_and_meta_grad(
                 model,
                 inner_lr=inner_lr,
                 first_order=first_order,
                 local_epochs=local_epochs,
             )
 
-            cluster_to_grads[client.cluster_id].append((meta_grads, max(int(stats["query_samples"]), 1)))
-            client_update_vecs.append(update_vec)
+            client_weight = max(int(stats["query_samples"]), 1)
+            cluster_to_grads[client.cluster_id].append((meta_grads, client_weight))
+            cluster_to_params[client.cluster_id].append((adapted_params, client_weight))
+            client_cluster_vecs.append(head_update_vec if self.cluster_feature == "head_updates" else update_vec)
             stats_list.append(stats)
 
         self.aggregate_meta_grads(cluster_to_grads)
+        self._blend_cluster_models(cluster_to_params)
 
         if self.recluster_every > 0 and (round_idx + 1) % self.recluster_every == 0:
-            self.recluster_clients(clients, client_update_vecs)
+            self.recluster_clients(clients, client_cluster_vecs)
 
         return stats_list

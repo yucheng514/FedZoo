@@ -3,7 +3,7 @@ import torch.nn.functional as F
 
 from torch.func import functional_call
 
-from utils.mcfl_utils import clone_params_dict, vectorize_params_dict
+from utils.mcfl_utils import clone_params_dict, infer_head_param_names, vectorize_params_dict, vectorize_selected_params
 
 
 class MCFLClient:
@@ -53,6 +53,7 @@ class MCFLClient:
 
         params = clone_params_dict(meta_model)
         original_params = {name: p for name, p in params.items()}
+        head_param_names = infer_head_param_names(params)
 
         def _check_labels(logits, targets, phase):
             if targets.numel() == 0:
@@ -129,6 +130,14 @@ class MCFLClient:
         original_vec = vectorize_params_dict(original_params).detach()
         adapted_vec = vectorize_params_dict(params).detach()
         update_vec = adapted_vec - original_vec
+        head_update_vec = (
+            vectorize_selected_params(params, head_param_names).detach()
+            - vectorize_selected_params(original_params, head_param_names).detach()
+        )
+        adapted_params = {
+            name: value.detach().clone()
+            for name, value in params.items()
+        }
 
         stats = {
             "client_id": self.client_id,
@@ -143,7 +152,7 @@ class MCFLClient:
             "query_correct": query_correct,
         }
 
-        return meta_grads, update_vec, stats
+        return meta_grads, update_vec, head_update_vec, adapted_params, stats
 
     def evaluate(self, model, adapt=False, inner_lr=0.1, local_epochs=None):
         model = model.to(self.device)

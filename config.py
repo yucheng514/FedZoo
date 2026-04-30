@@ -56,6 +56,12 @@ def build_parser():
     parser.add_argument('--mcfl_num_clusters', type=int, default=4)
     parser.add_argument('--mcfl_encoder_embed_dim', type=int, default=64)
     parser.add_argument('--mcfl_outer_lr', type=float, default=1e-3)
+    parser.add_argument(
+        '--mcfl_model_mix',
+        type=float,
+        default=0.5,
+        help='Interpolation factor for blending each cluster model with the weighted average of adapted client models.',
+    )
     parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
     parser.add_argument('--mcfl_recluster_every', type=int, default=5)
@@ -69,9 +75,9 @@ def build_parser():
     parser.add_argument(
         '--mcfl_cluster_feature',
         type=str,
-        default='updates',
-        choices=['updates', 'encoder'],
-        help='Feature space used for MCFL reclustering. "updates" is the stronger default unless the encoder is trained.',
+        default='head_updates',
+        choices=['updates', 'head_updates', 'encoder'],
+        help='Feature space used for MCFL reclustering. "head_updates" focuses clustering on client-specific classifier drift.',
     )
 
     # CFL-specific arguments.
