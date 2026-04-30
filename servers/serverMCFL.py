@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from models.mcfl_models import MCFLClientEncoder
-from utils.mcfl_clustering import kmeans_cluster
+from utils.mcfl_clustering import agglomerative_cluster, kmeans_cluster
 from utils.mcfl_utils import count_parameters
 
 
@@ -18,12 +18,14 @@ class MCFLServer:
         outer_lr=1e-2,
         device="cpu",
         recluster_every=1,
+        cluster_method="kmeans",
         cluster_feature="updates",
     ):
         self.device = device
         self.num_clusters = num_clusters
         self.outer_lr = outer_lr
         self.recluster_every = recluster_every
+        self.cluster_method = cluster_method
         self.cluster_feature = cluster_feature
 
         self.cluster_models = [
@@ -97,11 +99,17 @@ class MCFLServer:
             update_mat = torch.stack(client_update_vecs, dim=0).to(self.device)
             cluster_points = self._build_cluster_points(update_mat)
 
-        assignments = kmeans_cluster(
-            cluster_points,
-            num_clusters=self.num_clusters,
-            seed=42,
-        )
+        if self.cluster_method == "agglomerative":
+            assignments = agglomerative_cluster(
+                cluster_points,
+                num_clusters=self.num_clusters,
+            )
+        else:
+            assignments = kmeans_cluster(
+                cluster_points,
+                num_clusters=self.num_clusters,
+                seed=42,
+            )
 
         for client, cluster_id in zip(clients, assignments):
             client.cluster_id = int(cluster_id)

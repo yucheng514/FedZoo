@@ -60,6 +60,13 @@ def build_parser():
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
     parser.add_argument('--mcfl_recluster_every', type=int, default=5)
     parser.add_argument(
+        '--mcfl_cluster_method',
+        type=str,
+        default='kmeans',
+        choices=['kmeans', 'agglomerative'],
+        help='Clustering algorithm used by MCFL during reclustering.',
+    )
+    parser.add_argument(
         '--mcfl_cluster_feature',
         type=str,
         default='updates',
