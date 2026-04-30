@@ -141,6 +141,7 @@ def run_mcfl(args):
         outer_lr=args.mcfl_outer_lr,
         device=args.device,
         recluster_every=args.mcfl_recluster_every,
+        cluster_feature=args.mcfl_cluster_feature,
     )
 
     server.assign_initial_clusters(clients)

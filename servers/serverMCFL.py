@@ -18,11 +18,13 @@ class MCFLServer:
         outer_lr=1e-2,
         device="cpu",
         recluster_every=1,
+        cluster_feature="updates",
     ):
         self.device = device
         self.num_clusters = num_clusters
         self.outer_lr = outer_lr
         self.recluster_every = recluster_every
+        self.cluster_feature = cluster_feature
 
         self.cluster_models = [
             copy.deepcopy(global_model).to(device)
@@ -47,6 +49,26 @@ class MCFLServer:
         for i, client in enumerate(clients):
             client.cluster_id = i % self.num_clusters
 
+    def _build_cluster_points(self, update_mat):
+        update_mat, bad_rows = self._sanitize_update_matrix(update_mat)
+        if bad_rows > 0:
+            print(f"[MCFL] Recluster sanitized {bad_rows} client update vectors with non-finite values.")
+
+        normalized_updates = F.normalize(update_mat, dim=-1)
+
+        if self.cluster_feature == "encoder":
+            with torch.no_grad():
+                embeddings = self.encoder(update_mat)
+                if not torch.isfinite(embeddings).all():
+                    embeddings = F.normalize(
+                        torch.nan_to_num(embeddings, nan=0.0, posinf=1e6, neginf=-1e6),
+                        dim=-1,
+                    )
+                    print("[MCFL] Recluster sanitized non-finite encoder embeddings.")
+            return embeddings.detach().cpu().numpy()
+
+        return normalized_updates.detach().cpu().numpy()
+
     def aggregate_meta_grads(self, cluster_to_grads):
         for cluster_id in range(self.num_clusters):
             if len(cluster_to_grads[cluster_id]) == 0:
@@ -54,14 +76,17 @@ class MCFLServer:
 
             model = self.cluster_models[cluster_id]
             num_params = len(list(model.parameters()))
+            total_weight = sum(weight for _, weight in cluster_to_grads[cluster_id])
+            if total_weight <= 0:
+                total_weight = float(len(cluster_to_grads[cluster_id]))
 
             avg_grads = []
             for p_idx in range(num_params):
                 stacked = torch.stack(
-                    [grads[p_idx].detach() for grads in cluster_to_grads[cluster_id]],
+                    [grads[p_idx].detach() * weight for grads, weight in cluster_to_grads[cluster_id]],
                     dim=0,
                 )
-                avg_grads.append(stacked.mean(dim=0))
+                avg_grads.append(stacked.sum(dim=0) / total_weight)
 
             with torch.no_grad():
                 for p, g in zip(model.parameters(), avg_grads):
@@ -70,19 +95,10 @@ class MCFLServer:
     def recluster_clients(self, clients, client_update_vecs):
         with torch.no_grad():
             update_mat = torch.stack(client_update_vecs, dim=0).to(self.device)
-            update_mat, bad_rows = self._sanitize_update_matrix(update_mat)
-            if bad_rows > 0:
-                print(f"[MCFL] Recluster sanitized {bad_rows} client update vectors with non-finite values.")
-
-            embeddings = self.encoder(update_mat)
-            if not torch.isfinite(embeddings).all():
-                embeddings = F.normalize(torch.nan_to_num(embeddings, nan=0.0, posinf=1e6, neginf=-1e6), dim=-1)
-                print("[MCFL] Recluster sanitized non-finite encoder embeddings.")
-
-            embeddings = embeddings.detach().cpu().numpy()
+            cluster_points = self._build_cluster_points(update_mat)
 
         assignments = kmeans_cluster(
-            embeddings,
+            cluster_points,
             num_clusters=self.num_clusters,
             seed=42,
         )
@@ -104,7 +120,7 @@ class MCFLServer:
                 local_epochs=local_epochs,
             )
 
-            cluster_to_grads[client.cluster_id].append(meta_grads)
+            cluster_to_grads[client.cluster_id].append((meta_grads, max(int(stats["query_samples"]), 1)))
             client_update_vecs.append(update_vec)
             stats_list.append(stats)
 
