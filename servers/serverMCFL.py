@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from models.mcfl_models import MCFLClientEncoder
 from utils.mcfl_clustering import agglomerative_cluster, kmeans_cluster
-from utils.mcfl_utils import count_parameters
+from utils.mcfl_utils import count_parameters, sanitize_model_
 
 
 class MCFLServer:
@@ -109,6 +109,7 @@ class MCFLServer:
                         continue
                     mixed = (1.0 - self.model_mix) * value + self.model_mix * averaged_params[name].to(value.device)
                     value.copy_(mixed)
+            sanitize_model_(model)
 
     def _should_recluster(self, round_idx):
         current_round = round_idx + 1
@@ -147,6 +148,7 @@ class MCFLServer:
             with torch.no_grad():
                 for p, g in zip(model.parameters(), avg_grads):
                     p -= self.outer_lr * g
+            sanitize_model_(model)
 
     def recluster_clients(self, clients, client_cluster_vecs):
         with torch.no_grad():
@@ -176,12 +178,18 @@ class MCFLServer:
 
         for client in clients:
             model = self.cluster_models[client.cluster_id]
-            meta_grads, update_vec, head_update_vec, adapted_params, stats = client.local_adapt_and_meta_grad(
-                model,
-                inner_lr=inner_lr,
-                first_order=first_order,
-                local_epochs=local_epochs,
-            )
+            try:
+                meta_grads, update_vec, head_update_vec, adapted_params, stats = client.local_adapt_and_meta_grad(
+                    model,
+                    inner_lr=inner_lr,
+                    first_order=first_order,
+                    local_epochs=local_epochs,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"MCFL train_round failed for client_id={client.client_id}, "
+                    f"cluster_id={client.cluster_id}, round_idx={round_idx}"
+                ) from exc
 
             client_weight = max(int(stats["query_samples"]), 1)
             cluster_to_grads[client.cluster_id].append((meta_grads, client_weight))

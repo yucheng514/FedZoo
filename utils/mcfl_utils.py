@@ -4,6 +4,9 @@ import numpy as np
 import torch
 
 
+PARAM_CLAMP = 1e4
+
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -55,3 +58,21 @@ def clone_params_dict(model):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters())
+
+
+def sanitize_tensor(tensor, clamp=PARAM_CLAMP):
+    cleaned = torch.nan_to_num(tensor.detach(), nan=0.0, posinf=clamp, neginf=-clamp)
+    return torch.clamp(cleaned, min=-clamp, max=clamp)
+
+
+def sanitize_params_dict(params_dict, clamp=PARAM_CLAMP):
+    return {
+        name: sanitize_tensor(value, clamp=clamp).requires_grad_(bool(getattr(value, "requires_grad", False)))
+        for name, value in params_dict.items()
+    }
+
+
+def sanitize_model_(model, clamp=PARAM_CLAMP):
+    with torch.no_grad():
+        for param in model.parameters():
+            param.copy_(sanitize_tensor(param, clamp=clamp).to(param.device))
