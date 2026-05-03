@@ -62,11 +62,14 @@ def maybe_log_to_file(log_file, append=False):
 
 
 def print_run_summary(args):
+    mcfl_client_device = getattr(args, "mcfl_client_device_resolved", None)
     summary = (
         f"Run: algorithm={args.algorithm} | dataset={args.dataset} | device={args.device} | "
         f"rounds={args.global_rounds} | clients={args.num_clients} | local_epochs={args.local_epochs} | "
         f"lr={args.local_learning_rate} | batch_size={args.batch_size}"
     )
+    if args.algorithm == "MCFL" and mcfl_client_device is not None:
+        summary += f" | mcfl_client_device={mcfl_client_device}"
     print(summary)
 
     if getattr(args, "print_args", False):
@@ -102,6 +105,11 @@ def run_mcfl(args):
     from models.models import FedAvgCNN
 
     set_seed(args.mcfl_seed)
+
+    if args.mcfl_client_device == "auto":
+        args.mcfl_client_device_resolved = "cpu" if args.device == "cuda" else args.device
+    else:
+        args.mcfl_client_device_resolved = args.mcfl_client_device
 
     clients = make_mcfl_clients(args)
     budget = []

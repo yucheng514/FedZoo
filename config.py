@@ -50,6 +50,13 @@ def build_parser():
     # MCFL-specific arguments.
     parser.add_argument('--mcfl_seed', type=int, default=42)
     parser.add_argument('--mcfl_backbone', type=str, default='auto', choices=['auto', 'mlp', 'cnn'])
+    parser.add_argument(
+        '--mcfl_client_device',
+        type=str,
+        default='auto',
+        choices=['auto', 'cpu', 'cuda', 'mps'],
+        help='Device used for MCFL client-side inner-loop adaptation. "auto" defaults to cpu when the main device is cuda.',
+    )
     parser.add_argument('--mcfl_input_dim', type=int, default=64, help='Used by the synthetic fallback benchmark.')
     parser.add_argument('--mcfl_samples_per_client', type=int, default=512, help='Used by the synthetic fallback benchmark.')
     parser.add_argument('--mcfl_true_groups', type=int, default=4, help='Used by the synthetic fallback benchmark.')
