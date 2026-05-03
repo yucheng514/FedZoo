@@ -45,6 +45,15 @@ class MCFLClient:
                 f"min={min_label}, max={max_label}, num_classes={num_classes}."
             )
 
+    def _materialize_grads(self, grad_outputs, params):
+        grads = []
+        for grad, param in zip(grad_outputs, params):
+            if grad is None:
+                grads.append(torch.zeros_like(param))
+            else:
+                grads.append(grad)
+        return tuple(grads)
+
     def _adapt_model_copy(self, meta_model, inner_lr=0.1, local_epochs=None, phase_prefix="support"):
         if local_epochs is None:
             local_epochs = self.local_epochs
@@ -185,8 +194,9 @@ class MCFLClient:
                 query_loss,
                 tuple(adapted_model.parameters()),
                 create_graph=False,
-                allow_unused=False,
+                allow_unused=True,
             )
+            meta_grads = self._materialize_grads(meta_grads, tuple(adapted_model.parameters()))
 
             original_params = {
                 name: param.detach().clone()
@@ -286,8 +296,9 @@ class MCFLClient:
             query_loss,
             list(original_params.values()),
             create_graph=False,
-            allow_unused=False,
+            allow_unused=True,
         )
+        meta_grads = self._materialize_grads(meta_grads, tuple(original_params.values()))
 
         original_vec = vectorize_params_dict(original_params).detach()
         adapted_vec = vectorize_params_dict(params).detach()
