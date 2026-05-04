@@ -82,8 +82,14 @@ def build_parser():
     parser.add_argument(
         '--mcfl_stop_recluster_after',
         type=int,
-        default=25,
+        default=15,
         help='Stop reclustering after this round. Use -1 to keep reclustering for the whole run.',
+    )
+    parser.add_argument(
+        '--mcfl_max_reclusters',
+        type=int,
+        default=2,
+        help='Maximum number of reclustering events. Use -1 to disable this cap.',
     )
     parser.add_argument(
         '--mcfl_skip_final_recluster',

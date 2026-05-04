@@ -22,6 +22,7 @@ class MCFLServer:
         recluster_every=1,
         recluster_warmup_rounds=0,
         stop_recluster_after=-1,
+        max_reclusters=-1,
         skip_final_recluster=True,
         cluster_method="kmeans",
         cluster_feature="updates",
@@ -34,9 +35,11 @@ class MCFLServer:
         self.recluster_every = recluster_every
         self.recluster_warmup_rounds = recluster_warmup_rounds
         self.stop_recluster_after = stop_recluster_after
+        self.max_reclusters = max_reclusters
         self.skip_final_recluster = skip_final_recluster
         self.cluster_method = cluster_method
         self.cluster_feature = cluster_feature
+        self.recluster_count = 0
 
         self.cluster_models = [
             copy.deepcopy(global_model).to(device)
@@ -122,6 +125,8 @@ class MCFLServer:
             return False
         if self.stop_recluster_after > 0 and current_round > self.stop_recluster_after:
             return False
+        if self.max_reclusters > 0 and self.recluster_count >= self.max_reclusters:
+            return False
         if self.skip_final_recluster and self.total_rounds is not None and current_round >= self.total_rounds:
             return False
         return True
@@ -169,6 +174,7 @@ class MCFLServer:
 
         for client, cluster_id in zip(clients, assignments):
             client.cluster_id = int(cluster_id)
+        self.recluster_count += 1
 
     def train_round(self, clients, round_idx, inner_lr=0.1, first_order=True, local_epochs=1):
         cluster_to_grads = defaultdict(list)
