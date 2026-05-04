@@ -25,7 +25,20 @@ def _stack_image_samples(samples):
     return TensorDataset(x_tensor, y_tensor)
 
 
-def _stack_samples_for_backbone(samples, use_cnn, label_to_index=None):
+def _restore_image_shape(x, dataset_name):
+    if x.ndim != 1:
+        return x
+
+    flat_dim = int(x.numel())
+    dataset_upper = str(dataset_name).upper()
+    if dataset_upper in {"CIFAR10", "CIFAR-10", "CIFAR10".upper()} and flat_dim == 3 * 32 * 32:
+        return x.reshape(3, 32, 32)
+    if dataset_upper in {"MNIST", "EMNIST", "FEMNIST"} and flat_dim == 28 * 28:
+        return x.reshape(1, 28, 28)
+    return x
+
+
+def _stack_samples_for_backbone(samples, use_cnn, dataset_name, label_to_index=None):
     xs, ys = [], []
     for x, y in samples:
         if isinstance(x, (tuple, list)):
@@ -33,6 +46,7 @@ def _stack_samples_for_backbone(samples, use_cnn, label_to_index=None):
 
         x = x.float()
         if use_cnn:
+            x = _restore_image_shape(x, dataset_name)
             if x.ndim == 2:
                 x = x.unsqueeze(0)
             elif x.ndim == 1:
@@ -100,6 +114,7 @@ def _make_real_clients(args):
         dataset, feature_dim = _stack_samples_for_backbone(
             train_samples,
             use_cnn=use_cnn,
+            dataset_name=dataset_name,
             label_to_index=label_to_index,
         )
         if dataset is None:
@@ -118,6 +133,7 @@ def _make_real_clients(args):
         test_dataset, _ = _stack_samples_for_backbone(
             test_samples,
             use_cnn=use_cnn,
+            dataset_name=dataset_name,
             label_to_index=label_to_index,
         )
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
