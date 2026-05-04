@@ -107,6 +107,7 @@ def run_fedavg(args):
 
 def run_mcfl(args):
     from models.models import FedAvgCNN, MCFLResNet18
+    from dataset.mcfl_synthetic import _restore_image_shape
 
     set_seed(args.mcfl_seed)
 
@@ -119,6 +120,10 @@ def run_mcfl(args):
     budget = []
 
     warmup_x, _ = next(iter(clients[0].support_loader))
+    if warmup_x.ndim == 2:
+        restored = [_restore_image_shape(sample, args.dataset) for sample in warmup_x]
+        if restored and restored[0].ndim > 1:
+            warmup_x = torch.stack(restored, dim=0)
 
     def _infer_fedavgcnn_dim(sample_batch):
         h, w = int(sample_batch.shape[-2]), int(sample_batch.shape[-1])

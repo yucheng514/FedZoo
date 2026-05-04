@@ -105,7 +105,9 @@ def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed):
 def _make_real_clients(args):
     clients = []
     dataset_name = canonical_dataset_name(args.dataset)
-    use_cnn = args.mcfl_backbone == "cnn" or (args.mcfl_backbone == "auto" and dataset_name.upper() in IMAGE_DATASETS)
+    use_cnn = args.mcfl_backbone in {"cnn", "resnet"} or (
+        args.mcfl_backbone == "auto" and dataset_name.upper() in IMAGE_DATASETS
+    )
     inferred_input_dim = None
     label_to_index = {}
 
