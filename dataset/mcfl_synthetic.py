@@ -130,6 +130,7 @@ def _make_real_clients(args):
                 test_loader=test_loader,
                 device=getattr(args, "mcfl_client_device_resolved", args.device),
                 local_epochs=args.local_epochs,
+                adapt_scope=args.mcfl_adapt_scope,
             )
         )
 
@@ -178,6 +179,7 @@ def _make_synthetic_clients(args):
                 test_loader=query_loader,
                 device=getattr(args, "mcfl_client_device_resolved", args.device),
                 local_epochs=args.local_epochs,
+                adapt_scope=args.mcfl_adapt_scope,
             )
         )
 

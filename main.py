@@ -63,6 +63,7 @@ def maybe_log_to_file(log_file, append=False):
 
 def print_run_summary(args):
     mcfl_client_device = getattr(args, "mcfl_client_device_resolved", None)
+    mcfl_backbone = getattr(args, "mcfl_backbone_resolved", None)
     summary = (
         f"Run: algorithm={args.algorithm} | dataset={args.dataset} | device={args.device} | "
         f"rounds={args.global_rounds} | clients={args.num_clients} | local_epochs={args.local_epochs} | "
@@ -70,6 +71,9 @@ def print_run_summary(args):
     )
     if args.algorithm == "MCFL" and mcfl_client_device is not None:
         summary += f" | mcfl_client_device={mcfl_client_device}"
+        summary += f" | mcfl_adapt_scope={args.mcfl_adapt_scope}"
+    if args.algorithm == "MCFL" and mcfl_backbone is not None:
+        summary += f" | mcfl_backbone={mcfl_backbone}"
     print(summary)
 
     if getattr(args, "print_args", False):
@@ -102,7 +106,7 @@ def run_fedavg(args):
 
 
 def run_mcfl(args):
-    from models.models import FedAvgCNN
+    from models.models import FedAvgCNN, MCFLResNet18
 
     set_seed(args.mcfl_seed)
 
@@ -128,22 +132,33 @@ def run_mcfl(args):
 
     input_is_image = warmup_x.ndim == 4
     if args.mcfl_backbone == "auto":
-        use_cnn = input_is_image
-    elif args.mcfl_backbone == "cnn":
+        if str(args.dataset).upper() == "CIFAR10" and input_is_image:
+            selected_backbone = "resnet"
+        else:
+            selected_backbone = "cnn" if input_is_image else "mlp"
+    else:
+        selected_backbone = args.mcfl_backbone
+
+    args.mcfl_backbone_resolved = selected_backbone
+
+    if selected_backbone in {"cnn", "resnet"}:
         if not input_is_image:
             raise ValueError(
-                "MCFL backbone is set to cnn, but client data is not image-like "
+                f"MCFL backbone is set to {selected_backbone}, but client data is not image-like "
                 f"(got shape {tuple(warmup_x.shape)}). "
                 "Use --mcfl_backbone mlp or provide image-format client data."
             )
-        use_cnn = True
+        use_image_backbone = True
     else:
-        use_cnn = False
+        use_image_backbone = False
 
-    if use_cnn:
+    if use_image_backbone:
         in_features = int(warmup_x.shape[1])
-        conv_dim = _infer_fedavgcnn_dim(warmup_x)
-        base_model = FedAvgCNN(in_features=in_features, num_classes=args.num_classes, dim=conv_dim)
+        if selected_backbone == "resnet":
+            base_model = MCFLResNet18(in_channels=in_features, num_classes=args.num_classes, base_width=32)
+        else:
+            conv_dim = _infer_fedavgcnn_dim(warmup_x)
+            base_model = FedAvgCNN(in_features=in_features, num_classes=args.num_classes, dim=conv_dim)
     else:
         base_model = MCFLMLPClassifier(
             in_dim=None,
@@ -550,6 +565,5 @@ if __name__ == "__main__":
     args = get_args()
     resolve_device(args)
     with maybe_log_to_file(args.log_file, append=args.log_append):
-        print(f"\nUsing device: {args.device}\n")
         print_run_summary(args)
         run(args)

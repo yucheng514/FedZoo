@@ -49,7 +49,7 @@ def build_parser():
 
     # MCFL-specific arguments.
     parser.add_argument('--mcfl_seed', type=int, default=42)
-    parser.add_argument('--mcfl_backbone', type=str, default='auto', choices=['auto', 'mlp', 'cnn'])
+    parser.add_argument('--mcfl_backbone', type=str, default='auto', choices=['auto', 'mlp', 'cnn', 'resnet'])
     parser.add_argument(
         '--mcfl_client_device',
         type=str,
@@ -72,6 +72,13 @@ def build_parser():
     )
     parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
+    parser.add_argument(
+        '--mcfl_adapt_scope',
+        type=str,
+        default='head',
+        choices=['head', 'all'],
+        help='Parameter subset updated during MCFL client-side support adaptation.',
+    )
     parser.add_argument('--mcfl_recluster_every', type=int, default=5)
     parser.add_argument(
         '--mcfl_recluster_warmup_rounds',

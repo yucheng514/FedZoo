@@ -15,13 +15,23 @@ from utils.mcfl_utils import (
 
 
 class MCFLClient:
-    def __init__(self, client_id, support_loader, query_loader, test_loader=None, device="cpu", local_epochs=1):
+    def __init__(
+        self,
+        client_id,
+        support_loader,
+        query_loader,
+        test_loader=None,
+        device="cpu",
+        local_epochs=1,
+        adapt_scope="head",
+    ):
         self.client_id = client_id
         self.support_loader = support_loader
         self.query_loader = query_loader
         self.test_loader = test_loader if test_loader is not None else query_loader
         self.device = device
         self.local_epochs = local_epochs
+        self.adapt_scope = adapt_scope
         self.cluster_id = 0
 
     def _prepare_batch(self, x, y, phase, batch_idx):
@@ -54,12 +64,18 @@ class MCFLClient:
                 grads.append(grad)
         return tuple(grads)
 
+    def _adapt_param_names(self, params_dict):
+        if self.adapt_scope == "all":
+            return list(params_dict.keys())
+        return infer_head_param_names(params_dict)
+
     def _adapt_model_copy(self, meta_model, inner_lr=0.1, local_epochs=None, phase_prefix="support"):
         if local_epochs is None:
             local_epochs = self.local_epochs
 
         adapted_model = copy.deepcopy(meta_model).to(self.device)
         adapted_model.train()
+        adapt_param_names = self._adapt_param_names(dict(adapted_model.named_parameters()))
 
         support_loss_total = 0.0
         support_samples = 0
@@ -76,15 +92,19 @@ class MCFLClient:
                         f"MCFL {phase_prefix} loss is non-finite in batch {batch_idx}: {float(support_loss.item())}."
                     )
 
+                named_params = dict(adapted_model.named_parameters())
+                selected_params = tuple(named_params[name] for name in adapt_param_names if name in named_params)
+                if not selected_params:
+                    raise RuntimeError("MCFL support adaptation selected no parameters to update.")
                 grads = torch.autograd.grad(
                     support_loss,
-                    tuple(adapted_model.parameters()),
+                    selected_params,
                     create_graph=False,
                     allow_unused=False,
                 )
 
                 with torch.no_grad():
-                    for param, grad in zip(adapted_model.parameters(), grads):
+                    for param, grad in zip(selected_params, grads):
                         param.sub_(inner_lr * grad)
                 sanitize_model_(adapted_model)
 
@@ -121,6 +141,7 @@ class MCFLClient:
             }
 
         params = clone_params_dict(meta_model)
+        adapt_param_names = self._adapt_param_names(params)
         for _ in range(local_epochs):
             for batch_idx, (x_s, y_s) in enumerate(self.support_loader):
                 x_s, y_s = self._prepare_batch(x_s, y_s, "adapt_support", batch_idx)
@@ -134,14 +155,15 @@ class MCFLClient:
                     )
                 support_grads = torch.autograd.grad(
                     support_loss,
-                    list(params.values()),
+                    [params[name] for name in adapt_param_names],
                     create_graph=False,
                     allow_unused=False,
                 )
-                params = {
-                    name: p - inner_lr * g
-                    for (name, p), g in zip(params.items(), support_grads)
-                }
+
+                updated_params = dict(params)
+                for name, grad in zip(adapt_param_names, support_grads):
+                    updated_params[name] = updated_params[name] - inner_lr * grad
+                params = updated_params
                 params = sanitize_params_dict(params)
 
         return params
@@ -232,6 +254,7 @@ class MCFLClient:
         params = clone_params_dict(meta_model)
         original_params = {name: p for name, p in params.items()}
         head_param_names = infer_head_param_names(params)
+        adapt_param_names = self._adapt_param_names(params)
 
         support_loss_total = 0.0
         support_samples = 0
@@ -248,15 +271,15 @@ class MCFLClient:
 
                 support_grads = torch.autograd.grad(
                     support_loss,
-                    list(params.values()),
+                    [params[name] for name in adapt_param_names],
                     create_graph=not first_order,
                     allow_unused=False,
                 )
 
-                params = {
-                    name: p - inner_lr * g
-                    for (name, p), g in zip(params.items(), support_grads)
-                }
+                updated_params = dict(params)
+                for name, grad in zip(adapt_param_names, support_grads):
+                    updated_params[name] = updated_params[name] - inner_lr * grad
+                params = updated_params
                 params = sanitize_params_dict(params)
 
                 preds_s = torch.argmax(logits_s, dim=1)
