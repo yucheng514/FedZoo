@@ -98,7 +98,8 @@ class MCFLServer:
                 total_weight = float(len(cluster_to_params[cluster_id]))
 
             averaged_params = {}
-            for name in model.state_dict().keys():
+            param_names = [name for name, _ in model.named_parameters()]
+            for name in param_names:
                 stacked = torch.stack(
                     [params[name].detach().to(self.device) * weight for params, weight in cluster_to_params[cluster_id]],
                     dim=0,
@@ -106,8 +107,7 @@ class MCFLServer:
                 averaged_params[name] = stacked.sum(dim=0) / total_weight
 
             with torch.no_grad():
-                state_dict = model.state_dict()
-                for name, value in state_dict.items():
+                for name, value in model.named_parameters():
                     if name not in averaged_params:
                         continue
                     mixed = (1.0 - self.model_mix) * value + self.model_mix * averaged_params[name].to(value.device)
