@@ -10,6 +10,7 @@ class IFCAServer:
         self.criterion = criterion
         self.task = task
         self.device = device
+        self.assignment_device = "cpu" if device == "cuda" else device
         self.mode = mode
         self.freeze_backbone = freeze_backbone
         self.fixed_assignments = None
@@ -49,7 +50,10 @@ class IFCAServer:
             return list(self.fixed_assignments)
         assignments = []
         for client in self.clients:
-            losses = [client.loss_for_model(model, self.criterion, train=True) for model in self.cluster_models]
+            losses = [
+                client.loss_for_model(model, self.criterion, train=True, device=self.assignment_device)
+                for model in self.cluster_models
+            ]
             assignments.append(min(range(len(losses)), key=lambda idx: losses[idx]))
         return assignments
 
@@ -92,8 +96,8 @@ class IFCAServer:
 
         for client, cluster_idx in zip(self.clients, assignments):
             model = self.cluster_models[cluster_idx]
-            train_losses.append(client.loss_for_model(model, self.criterion, train=True))
-            test_metric = client.metric_for_model(model, train=False)
+            train_losses.append(client.loss_for_model(model, self.criterion, train=True, device=self.assignment_device))
+            test_metric = client.metric_for_model(model, train=False, device=self.assignment_device)
             test_scores.append(test_metric)
             if getattr(client, "cluster_id", -1) >= 0:
                 has_cluster_labels = True
