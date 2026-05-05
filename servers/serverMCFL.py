@@ -93,12 +93,18 @@ class MCFLServer:
                 continue
 
             model = self.cluster_models[cluster_id]
+            client_param_names = set.intersection(
+                *(set(params.keys()) for params, _ in cluster_to_params[cluster_id])
+            )
             total_weight = sum(weight for _, weight in cluster_to_params[cluster_id])
             if total_weight <= 0:
                 total_weight = float(len(cluster_to_params[cluster_id]))
 
             averaged_params = {}
-            param_names = [name for name, _ in model.named_parameters()]
+            param_names = [
+                name for name, _ in model.named_parameters()
+                if name in client_param_names
+            ]
             for name in param_names:
                 stacked = torch.stack(
                     [params[name].detach().to(self.device) * weight for params, weight in cluster_to_params[cluster_id]],
