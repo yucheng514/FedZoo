@@ -48,7 +48,7 @@ class FedAvg(Server):
             self.aggregate_parameters()
 
             self.Budget.append(time.time() - s_t)
-            print('-'*25, 'time cost', '-'*25, self.Budget[-1])
+            print('-'*25, 'time cost', '-'*25, f"{self.Budget[-1]:.2f}")
 
             if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc], top_cnt=self.top_cnt):
                 break
@@ -58,7 +58,7 @@ class FedAvg(Server):
         #     self.rs_train_acc), min(self.rs_train_loss))
         print(max(self.rs_test_acc))
         print("\nAverage time cost per round.")
-        print(sum(self.Budget[1:])/len(self.Budget[1:]))
+        print(f"{sum(self.Budget[1:])/len(self.Budget[1:]):.2f}")
 
         self.save_results()
         self.save_global_model()

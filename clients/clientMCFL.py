@@ -23,7 +23,6 @@ class MCFLClient:
         test_loader=None,
         device="cpu",
         local_epochs=1,
-        adapt_scope="head",
     ):
         self.client_id = client_id
         self.support_loader = support_loader
@@ -31,7 +30,6 @@ class MCFLClient:
         self.test_loader = test_loader if test_loader is not None else query_loader
         self.device = device
         self.local_epochs = local_epochs
-        self.adapt_scope = adapt_scope
         self.cluster_id = 0
 
     def _prepare_batch(self, x, y, phase, batch_idx):
@@ -64,18 +62,13 @@ class MCFLClient:
                 grads.append(grad)
         return tuple(grads)
 
-    def _adapt_param_names(self, params_dict):
-        if self.adapt_scope == "all":
-            return list(params_dict.keys())
-        return infer_head_param_names(params_dict)
-
     def _adapt_model_copy(self, meta_model, inner_lr=0.1, local_epochs=None, phase_prefix="support"):
         if local_epochs is None:
             local_epochs = self.local_epochs
 
         adapted_model = copy.deepcopy(meta_model).to(self.device)
         adapted_model.train()
-        adapt_param_names = self._adapt_param_names(dict(adapted_model.named_parameters()))
+        adapt_param_names = list(dict(adapted_model.named_parameters()).keys())
 
         support_loss_total = 0.0
         support_samples = 0
@@ -141,7 +134,7 @@ class MCFLClient:
             }
 
         params = clone_params_dict(meta_model)
-        adapt_param_names = self._adapt_param_names(params)
+        adapt_param_names = list(params.keys())
         for _ in range(local_epochs):
             for batch_idx, (x_s, y_s) in enumerate(self.support_loader):
                 x_s, y_s = self._prepare_batch(x_s, y_s, "adapt_support", batch_idx)
@@ -254,7 +247,7 @@ class MCFLClient:
         params = clone_params_dict(meta_model)
         original_params = {name: p for name, p in params.items()}
         head_param_names = infer_head_param_names(params)
-        adapt_param_names = self._adapt_param_names(params)
+        adapt_param_names = list(params.keys())
 
         support_loss_total = 0.0
         support_samples = 0

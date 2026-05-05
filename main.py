@@ -63,7 +63,6 @@ def maybe_log_to_file(log_file, append=False):
 
 def print_run_summary(args):
     mcfl_client_device = getattr(args, "mcfl_client_device_resolved", None)
-    mcfl_backbone = getattr(args, "mcfl_backbone_resolved", None)
     summary = (
         f"Run: algorithm={args.algorithm} | dataset={args.dataset} | device={args.device} | "
         f"rounds={args.global_rounds} | clients={args.num_clients} | local_epochs={args.local_epochs} | "
@@ -71,9 +70,6 @@ def print_run_summary(args):
     )
     if args.algorithm == "MCFL" and mcfl_client_device is not None:
         summary += f" | mcfl_client_device={mcfl_client_device}"
-        summary += f" | mcfl_adapt_scope={args.mcfl_adapt_scope}"
-    if args.algorithm == "MCFL" and mcfl_backbone is not None:
-        summary += f" | mcfl_backbone={mcfl_backbone}"
     print(summary)
 
     if getattr(args, "print_args", False):
@@ -106,8 +102,7 @@ def run_fedavg(args):
 
 
 def run_mcfl(args):
-    from models.models import FedAvgCNN, MCFLResNet18
-    from dataset.mcfl_synthetic import _restore_image_shape
+    from models.models import FedAvgCNN
 
     set_seed(args.mcfl_seed)
 
@@ -120,10 +115,6 @@ def run_mcfl(args):
     budget = []
 
     warmup_x, _ = next(iter(clients[0].support_loader))
-    if warmup_x.ndim == 2:
-        restored = [_restore_image_shape(sample, args.dataset) for sample in warmup_x]
-        if restored and restored[0].ndim > 1:
-            warmup_x = torch.stack(restored, dim=0)
 
     def _infer_fedavgcnn_dim(sample_batch):
         h, w = int(sample_batch.shape[-2]), int(sample_batch.shape[-1])
@@ -137,16 +128,11 @@ def run_mcfl(args):
 
     input_is_image = warmup_x.ndim == 4
     if args.mcfl_backbone == "auto":
-        if str(args.dataset).upper() == "CIFAR10" and input_is_image:
-            selected_backbone = "resnet"
-        else:
-            selected_backbone = "cnn" if input_is_image else "mlp"
+        selected_backbone = "cnn" if input_is_image else "mlp"
     else:
         selected_backbone = args.mcfl_backbone
 
-    args.mcfl_backbone_resolved = selected_backbone
-
-    if selected_backbone in {"cnn", "resnet"}:
+    if selected_backbone == "cnn":
         if not input_is_image:
             raise ValueError(
                 f"MCFL backbone is set to {selected_backbone}, but client data is not image-like "
@@ -159,11 +145,8 @@ def run_mcfl(args):
 
     if use_image_backbone:
         in_features = int(warmup_x.shape[1])
-        if selected_backbone == "resnet":
-            base_model = MCFLResNet18(in_channels=in_features, num_classes=args.num_classes, base_width=32)
-        else:
-            conv_dim = _infer_fedavgcnn_dim(warmup_x)
-            base_model = FedAvgCNN(in_features=in_features, num_classes=args.num_classes, dim=conv_dim)
+        conv_dim = _infer_fedavgcnn_dim(warmup_x)
+        base_model = FedAvgCNN(in_features=in_features, num_classes=args.num_classes, dim=conv_dim)
     else:
         base_model = MCFLMLPClassifier(
             in_dim=None,
@@ -242,13 +225,13 @@ def run_mcfl(args):
         )
         best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
         budget.append(time.time() - s_t)
-        print('-' * 25, 'time cost', '-' * 25, budget[-1])
+        print('-' * 25, 'time cost', '-' * 25, f"{budget[-1]:.2f}")
 
     if budget:
         print("\nBest accuracy.")
         print(best_test_acc if best_test_acc != float("-inf") else 0.0)
         print("\nAverage time cost per round.")
-        print(sum(budget) / len(budget))
+        print(f"{sum(budget) / len(budget):.2f}")
 
 
 def run_cfl(args):
@@ -460,7 +443,7 @@ def run_ifca(args):
     else:
         print(f"Round -01 | test_acc={initial['test_acc']:.4f}")
     initial_time = time.time() - initial_s_t
-    print('-' * 25, 'time cost', '-' * 25, initial_time)
+    print('-' * 25, 'time cost', '-' * 25, f"{initial_time:.2f}")
     budget.append(initial_time)
     best_test_acc = initial["test_acc"] if task != "regression" else float("-inf")
 
@@ -484,7 +467,7 @@ def run_ifca(args):
         if task != "regression":
             best_test_acc = max(best_test_acc, eval_stats["test_acc"])
         budget.append(time.time() - s_t)
-        print('-' * 25, 'time cost', '-' * 25, budget[-1])
+        print('-' * 25, 'time cost', '-' * 25, f"{budget[-1]:.2f}")
 
     if budget:
         print("\nBest accuracy.")
@@ -493,7 +476,7 @@ def run_ifca(args):
         else:
             print(best_test_acc)
         print("\nAverage time cost per round.")
-        print(sum(budget) / len(budget))
+        print(f"{sum(budget) / len(budget):.2f}")
 
     if args.ifca_checkpoint:
         checkpoint_path = Path(args.ifca_checkpoint)
@@ -560,7 +543,7 @@ def run(args):
         run_perfedavg(args)
     elif args.algorithm == "pFedMe":
         run_pfedme(args)
-    else:
+    else: #fedavg
         run_fedavg(args)
 
 

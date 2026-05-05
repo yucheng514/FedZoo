@@ -105,7 +105,7 @@ def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed):
 def _make_real_clients(args):
     clients = []
     dataset_name = canonical_dataset_name(args.dataset)
-    use_cnn = args.mcfl_backbone in {"cnn", "resnet"} or (
+    use_cnn = args.mcfl_backbone == "cnn" or (
         args.mcfl_backbone == "auto" and dataset_name.upper() in IMAGE_DATASETS
     )
     inferred_input_dim = None
@@ -148,7 +148,6 @@ def _make_real_clients(args):
                 test_loader=test_loader,
                 device=getattr(args, "mcfl_client_device_resolved", args.device),
                 local_epochs=args.local_epochs,
-                adapt_scope=args.mcfl_adapt_scope,
             )
         )
 
@@ -197,7 +196,6 @@ def _make_synthetic_clients(args):
                 test_loader=query_loader,
                 device=getattr(args, "mcfl_client_device_resolved", args.device),
                 local_epochs=args.local_epochs,
-                adapt_scope=args.mcfl_adapt_scope,
             )
         )
 

@@ -39,7 +39,7 @@ class serverPerFedAvg(Server):
             self.aggregate_parameters()
 
             self.Budget.append(time.time() - s_t)
-            print('-' * 25, 'time cost', '-' * 25, self.Budget[-1])
+            print('-' * 25, 'time cost', '-' * 25, f"{self.Budget[-1]:.2f}")
 
             if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc], top_cnt=self.top_cnt):
                 break
@@ -47,7 +47,7 @@ class serverPerFedAvg(Server):
         print("\nBest accuracy.")
         print(max(self.rs_test_acc))
         print("\nAverage time cost per round.")
-        print(sum(self.Budget[1:]) / len(self.Budget[1:]))
+        print(f"{sum(self.Budget[1:]) / len(self.Budget[1:]):.2f}")
 
         self.save_results()
         self.save_global_model()
@@ -87,4 +87,3 @@ class serverPerFedAvg(Server):
         print("Averaged Train Loss: {:.4f}".format(train_loss))
         print("Averaged Test Accuracy: {:.4f}".format(test_acc))
         print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
-
