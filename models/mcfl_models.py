@@ -32,17 +32,28 @@ class MCFLMLPClassifier(MCFLFormalMLP):
 
 
 class MCFLClientEncoder(nn.Module):
+    """改进 5: 增强的编码器 - 更好的聚类特征表示"""
+
     def __init__(self, input_dim, embed_dim=32):
         super().__init__()
+        hidden_dim = 256
+
+        # 改进: 添加批归一化, 更深的网络, 更好的非线性
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 256),
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(256, 128),
+
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.BatchNorm1d(hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(128, embed_dim),
+
+            nn.Linear(hidden_dim // 2, embed_dim),
+            nn.BatchNorm1d(embed_dim),  # 最后一层也添加BN
         )
 
     def forward(self, update_vec):
         z = self.net(update_vec)
-        return F.normalize(z, dim=-1)
+        # L2 归一化用于聚类
+        return F.normalize(z, p=2, dim=-1)
 

@@ -121,14 +121,31 @@ class MCFLServer:
             sanitize_model_(model)
 
     def _should_recluster(self, round_idx):
-        current_round = round_idx + 1
+        """向后兼容包装"""
+        return self.should_recluster(round_idx + 1)
 
-        if self.recluster_every <= 0:
-            return False
+    def should_recluster(self, current_round):
+        """改进 3: 稳定化聚类策略"""
         if current_round < self.recluster_warmup_rounds:
             return False
-        if current_round % self.recluster_every != 0:
+
+        # 分阶段重聚类策略:
+        # Round 0-9: 不重聚类 (冷启动期)
+        # Round 10-20: 每 3 轮重聚类
+        # Round 21+: 根据原始策略
+        early_rounds = current_round
+        if early_rounds < 10:
             return False
+
+        if early_rounds < 20:
+            # 成长期: 每 3 轮重聚类
+            if (current_round % 3) != 0:
+                return False
+        else:
+            # 稳定期: 依照原始 recluster_every
+            if current_round % self.recluster_every != 0:
+                return False
+
         if self.stop_recluster_after > 0 and current_round > self.stop_recluster_after:
             return False
         if self.max_reclusters > 0 and self.recluster_count >= self.max_reclusters:
@@ -136,6 +153,25 @@ class MCFLServer:
         if self.skip_final_recluster and self.total_rounds is not None and current_round >= self.total_rounds:
             return False
         return True
+
+    def should_apply_new_clustering(self, old_assignments, new_assignments):
+        """改进 3: 检查新聚类是否差异太大, 避免频繁重组"""
+        if old_assignments is None or len(old_assignments) == 0:
+            return True
+
+        # 计算 client 变动比例
+        changes = sum(1 for i in range(len(old_assignments))
+                     if old_assignments[i] != new_assignments[i])
+        change_ratio = changes / len(old_assignments)
+
+        # 只有变动 > 20% 才应用新聚类
+        if change_ratio > 0.2:
+            return True
+        return False
+
+    def store_clustering_snapshot(self, clients):
+        """保存当前聚类分配用于对比"""
+        return [client.cluster_id for client in clients]
 
     def aggregate_meta_grads(self, cluster_to_grads):
         for cluster_id in range(self.num_clusters):
@@ -161,7 +197,8 @@ class MCFLServer:
                     p -= self.outer_lr * g
             sanitize_model_(model)
 
-    def recluster_clients(self, clients, client_cluster_vecs):
+    def recluster_clients(self, clients, client_cluster_vecs, old_assignments=None):
+        """改进 3: 重聚类时检查变化, 避免微小波动导致的频繁重组"""
         with torch.no_grad():
             update_mat = torch.stack(client_cluster_vecs, dim=0).to(self.device)
             cluster_points = self._build_cluster_points(update_mat)
@@ -178,6 +215,10 @@ class MCFLServer:
                 seed=42,
             )
 
+        # 改进 3: 检查新聚类是否应该应用
+        if old_assignments is not None and not self.should_apply_new_clustering(old_assignments, assignments):
+            return  # 不应用新聚类
+
         for client, cluster_id in zip(clients, assignments):
             client.cluster_id = int(cluster_id)
         self.recluster_count += 1
@@ -188,14 +229,20 @@ class MCFLServer:
         client_cluster_vecs = []
         stats_list = []
 
+        # 保存旧的聚类分配用于对比 (改进 3)
+        old_cluster_assignment = self.store_clustering_snapshot(clients)
+
         for client in clients:
+            # 改进 2: 动态调整内循环轮数
+            dynamic_epochs = client.compute_dynamic_inner_epochs()
+
             model = self.cluster_models[client.cluster_id]
             try:
                 meta_grads, update_vec, head_update_vec, adapted_params, stats = client.local_adapt_and_meta_grad(
                     model,
                     inner_lr=inner_lr,
                     first_order=first_order,
-                    local_epochs=local_epochs,
+                    local_epochs=dynamic_epochs,  # ← 使用动态轮数
                 )
             except Exception as exc:
                 raise RuntimeError(
@@ -212,7 +259,8 @@ class MCFLServer:
         self.aggregate_meta_grads(cluster_to_grads)
         self._blend_cluster_models(cluster_to_params)
 
-        if self._should_recluster(round_idx):
-            self.recluster_clients(clients, client_cluster_vecs)
+        if self.should_recluster(round_idx):
+            # 改进 3: 传入旧的聚类分配用于对比
+            self.recluster_clients(clients, client_cluster_vecs, old_assignments=old_cluster_assignment)
 
         return stats_list

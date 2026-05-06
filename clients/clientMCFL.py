@@ -32,6 +32,28 @@ class MCFLClient:
         self.local_epochs = local_epochs
         self.cluster_id = 0
 
+    def compute_dynamic_inner_epochs(self):
+        """
+        改进 2: 自适应内循环轮数
+        根据支持集大小动态调整
+        """
+        # 估计支持集大小 (通过第一个batch)
+        try:
+            support_size = 0
+            for x_s, y_s in self.support_loader:
+                support_size += y_s.size(0)
+                break  # 只看第一个batch估计
+
+            # 根据大小调整内循环轮数
+            if support_size < 15:
+                return 10  # 数据少，多优化
+            elif support_size < 30:
+                return self.local_epochs  # 默认值
+            else:
+                return max(1, self.local_epochs - 2)  # 数据多，防过拟合
+        except:
+            return self.local_epochs  # 默认值
+
     def _prepare_batch(self, x, y, phase, batch_idx):
         if y.numel() == 0:
             raise ValueError(f"MCFL {phase} batch {batch_idx} is empty.")
@@ -208,7 +230,7 @@ class MCFLClient:
             meta_grads = torch.autograd.grad(
                 query_loss,
                 tuple(adapted_model.parameters()),
-                create_graph=False,
+                create_graph=True,  # ← 改进 4: 保留计算图用于标准 MAML 实现
                 allow_unused=True,
             )
             meta_grads = self._materialize_grads(meta_grads, tuple(adapted_model.parameters()))
