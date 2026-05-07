@@ -44,6 +44,11 @@ class MCFLServer:
         self.cluster_feature = cluster_feature
         self.algorithm = algorithm
         self.recluster_count = 0
+        
+        # 用于检测剧烈漂移的 EMA 追踪
+        self.loss_ema = None
+        self.drift_threshold = 1.2  # 损失突增 20% 视为剧烈漂移
+        self.ema_alpha = 0.1        # 平滑因子
 
         self.cluster_models = [
             copy.deepcopy(global_model).to(device)
@@ -231,6 +236,7 @@ class MCFLServer:
 
             model = self.cluster_models[client.cluster_id]
             try:
+                # 当轻微漂移发生时，这里的元适配 (inner loop) 能自动掩盖漂移
                 meta_grads, update_vec, head_update_vec, adapted_params, stats = client.local_adapt_and_meta_grad(
                     model,
                     inner_lr=inner_lr,
@@ -253,8 +259,22 @@ class MCFLServer:
         self.aggregate_meta_grads(cluster_to_grads)
         self._blend_cluster_models(cluster_to_params)
 
-        if self.should_recluster(round_idx):
-            # 改进 3: 传入旧的聚类分配用于对比
+        # 剧烈漂移检测：基于平均 query_loss 突然升高
+        avg_query_loss = sum(s["query_loss"] for s in stats_list) / max(len(stats_list), 1)
+        severe_drift_detected = False
+        
+        if self.loss_ema is None:
+            self.loss_ema = avg_query_loss
+        else:
+            # 当元适配无法再掩盖漂移时，损失会激增，触发剧烈漂移
+            if avg_query_loss > self.drift_threshold * self.loss_ema:
+                severe_drift_detected = True
+                print(f"[MCFL] Severe drift detected! Loss spiked from {self.loss_ema:.4f} to {avg_query_loss:.4f}. Triggering re-clustering.")
+            self.loss_ema = self.ema_alpha * avg_query_loss + (1 - self.ema_alpha) * self.loss_ema
+
+        # 如果发生剧烈漂移，或者达到常规的重聚类周期，则触发低成本的簇重组
+        if severe_drift_detected or self.should_recluster(round_idx):
+            # 传入旧的聚类分配用于对比，以确保重组是低成本的（避免不必要的频繁小范围换簇）
             self.recluster_clients(clients, client_cluster_vecs, old_assignments=old_cluster_assignment)
 
         return stats_list
