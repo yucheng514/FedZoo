@@ -24,6 +24,7 @@ class MCFLServer:
         stop_recluster_after=-1,
         max_reclusters=-1,
         skip_final_recluster=True,
+        cluster_change_threshold=0.1,
         cluster_method="kmeans",
         cluster_feature="updates",
     ):
@@ -37,6 +38,7 @@ class MCFLServer:
         self.stop_recluster_after = stop_recluster_after
         self.max_reclusters = max_reclusters
         self.skip_final_recluster = skip_final_recluster
+        self.cluster_change_threshold = cluster_change_threshold
         self.cluster_method = cluster_method
         self.cluster_feature = cluster_feature
         self.recluster_count = 0
@@ -125,26 +127,15 @@ class MCFLServer:
         return self.should_recluster(round_idx + 1)
 
     def should_recluster(self, current_round):
-        """改进 3: 稳定化聚类策略"""
+        """放松版聚类策略：缩短 warmup，减少保守阶段，允许更频繁重聚类。"""
         if current_round < self.recluster_warmup_rounds:
             return False
 
-        # 分阶段重聚类策略:
-        # Round 0-9: 不重聚类 (冷启动期)
-        # Round 10-20: 每 3 轮重聚类
-        # Round 21+: 根据原始策略
-        early_rounds = current_round
-        if early_rounds < 10:
+        if self.recluster_every <= 0:
             return False
 
-        if early_rounds < 20:
-            # 成长期: 每 3 轮重聚类
-            if (current_round % 3) != 0:
-                return False
-        else:
-            # 稳定期: 依照原始 recluster_every
-            if current_round % self.recluster_every != 0:
-                return False
+        if current_round % self.recluster_every != 0:
+            return False
 
         if self.stop_recluster_after > 0 and current_round > self.stop_recluster_after:
             return False
@@ -155,7 +146,7 @@ class MCFLServer:
         return True
 
     def should_apply_new_clustering(self, old_assignments, new_assignments):
-        """改进 3: 检查新聚类是否差异太大, 避免频繁重组"""
+        """放松版阈值：降低变动门槛，让有益的重分组更容易生效。"""
         if old_assignments is None or len(old_assignments) == 0:
             return True
 
@@ -164,8 +155,8 @@ class MCFLServer:
                      if old_assignments[i] != new_assignments[i])
         change_ratio = changes / len(old_assignments)
 
-        # 只有变动 > 20% 才应用新聚类
-        if change_ratio > 0.2:
+        # 只有变动足够明显才应用新聚类
+        if change_ratio > self.cluster_change_threshold:
             return True
         return False
 

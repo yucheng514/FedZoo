@@ -173,6 +173,7 @@ def run_mcfl(args):
         stop_recluster_after=args.mcfl_stop_recluster_after,
         max_reclusters=args.mcfl_max_reclusters,
         skip_final_recluster=args.mcfl_skip_final_recluster,
+        cluster_change_threshold=args.mcfl_cluster_change_threshold,
         cluster_method=args.mcfl_cluster_method,
         cluster_feature=args.mcfl_cluster_feature,
     )

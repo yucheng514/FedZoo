@@ -72,24 +72,30 @@ def build_parser():
     )
     parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
-    parser.add_argument('--mcfl_recluster_every', type=int, default=5)
+    parser.add_argument('--mcfl_recluster_every', type=int, default=2, help='Recluster every N rounds (reduced to relax overly stable clustering).')
     parser.add_argument(
         '--mcfl_recluster_warmup_rounds',
         type=int,
-        default=5,
-        help='Do not recluster before this many global rounds have completed.',
+        default=8,
+        help='Do not recluster before this many global rounds have completed (shortened to allow earlier adaptation).',
     )
     parser.add_argument(
         '--mcfl_stop_recluster_after',
         type=int,
-        default=15,
+        default=-1,
         help='Stop reclustering after this round. Use -1 to keep reclustering for the whole run.',
     )
     parser.add_argument(
         '--mcfl_max_reclusters',
         type=int,
-        default=2,
+        default=-1,
         help='Maximum number of reclustering events. Use -1 to disable this cap.',
+    )
+    parser.add_argument(
+        '--mcfl_cluster_change_threshold',
+        type=float,
+        default=0.1,
+        help='Minimum fraction of assignment changes required to accept a new clustering.',
     )
     parser.add_argument(
         '--mcfl_skip_final_recluster',
