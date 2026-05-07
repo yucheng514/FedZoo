@@ -61,6 +61,15 @@ def maybe_log_to_file(log_file, append=False):
             sys.stdout = original_stdout
 
 
+def print_python_command():
+    """输出完整的python命令行"""
+    command = "python " + " ".join(sys.argv)
+    print("=" * 80)
+    print("COMMAND LINE:")
+    print(command)
+    print("=" * 80)
+
+
 def print_run_summary(args):
     mcfl_client_device = getattr(args, "mcfl_client_device_resolved", None)
     summary = (
@@ -176,6 +185,7 @@ def run_mcfl(args):
         cluster_change_threshold=args.mcfl_cluster_change_threshold,
         cluster_method=args.mcfl_cluster_method,
         cluster_feature=args.mcfl_cluster_feature,
+        algorithm=args.mcfl_algorithm,
     )
 
     server.assign_initial_clusters(clients)
@@ -554,5 +564,6 @@ if __name__ == "__main__":
     args = get_args()
     resolve_device(args)
     with maybe_log_to_file(args.log_file, append=args.log_append):
+        print_python_command()
         print_run_summary(args)
         run(args)

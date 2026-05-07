@@ -183,7 +183,7 @@ class MCFLClient:
 
         return params
 
-    def local_adapt_and_meta_grad(self, meta_model, inner_lr=0.1, first_order=True, local_epochs=None):
+    def local_adapt_and_meta_grad(self, meta_model, inner_lr=0.1, first_order=True, local_epochs=None, algorithm='fomaml'):
         meta_model = meta_model.to(self.device)
         meta_model.train()
 
@@ -363,7 +363,18 @@ class MCFLClient:
             "query_correct": query_correct,
         }
 
-        return meta_grads, update_vec, head_update_vec, adapted_params, stats
+        # 对于 Reptile，用参数差分代替梯度；对于 MAML/FOMAML，用计算得到的元梯度
+        if algorithm == 'reptile':
+            # Reptile: 返回参数差分作为"虚拟梯度"，服务器端会直接用它做参数更新
+            # 为了兼容现有框架，我们把 update_vec 转换为梯度元组形式
+            reptile_grads = tuple(
+                (updated_param - original_param).detach()
+                for updated_param, original_param in zip(params.values(), original_params.values())
+            )
+            return reptile_grads, update_vec, head_update_vec, adapted_params, stats
+        else:
+            # MAML 或 FOMAML: 返回元梯度
+            return meta_grads, update_vec, head_update_vec, adapted_params, stats
 
     def evaluate(self, model, adapt=False, inner_lr=0.1, local_epochs=None):
         model = model.to(self.device)

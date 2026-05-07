@@ -71,6 +71,7 @@ def build_parser():
         help='Interpolation factor for blending each cluster model with the weighted average of adapted client models.',
     )
     parser.add_argument('--mcfl_support_ratio', type=float, default=0.8)
+    parser.add_argument('--mcfl_algorithm', type=str, default='fomaml', choices=['maml', 'fomaml', 'reptile'], help='Meta-learning algorithm: maml (second-order), fomaml (first-order), or reptile (parameter-difference).')
     parser.add_argument('--mcfl_first_order', type=bool, default=True)
     parser.add_argument('--mcfl_recluster_every', type=int, default=2, help='Recluster every N rounds (reduced to relax overly stable clustering).')
     parser.add_argument(

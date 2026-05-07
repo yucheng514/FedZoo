@@ -27,6 +27,7 @@ class MCFLServer:
         cluster_change_threshold=0.1,
         cluster_method="kmeans",
         cluster_feature="updates",
+        algorithm="fomaml",
     ):
         self.device = device
         self.num_clusters = num_clusters
@@ -41,6 +42,7 @@ class MCFLServer:
         self.cluster_change_threshold = cluster_change_threshold
         self.cluster_method = cluster_method
         self.cluster_feature = cluster_feature
+        self.algorithm = algorithm
         self.recluster_count = 0
 
         self.cluster_models = [
@@ -234,6 +236,7 @@ class MCFLServer:
                     inner_lr=inner_lr,
                     first_order=first_order,
                     local_epochs=dynamic_epochs,  # ← 使用动态轮数
+                    algorithm=self.algorithm,  # ← 传递算法参数
                 )
             except Exception as exc:
                 raise RuntimeError(
