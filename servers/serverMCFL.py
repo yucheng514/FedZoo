@@ -152,17 +152,36 @@ class MCFLServer:
                     value.copy_(mixed)
             sanitize_model_(model)
 
-    def _compute_similarity_to_clusters(self, update_vec):
-        """计算一个客户端与所有簇模型的相似度 (余弦相似度)"""
-        update_vec = torch.tensor(update_vec, dtype=torch.float32).to(self.device)
-        update_vec = F.normalize(update_vec.unsqueeze(0), dim=-1)
+    def _build_cluster_centroids(self, clients, client_cluster_vecs):
+        """根据当前客户端分配，构建每个簇在同一特征空间中的中心向量。"""
+        cluster_to_vecs = defaultdict(list)
+        for client, vec in zip(clients, client_cluster_vecs):
+            cluster_to_vecs[int(client.cluster_id)].append(vec.detach().to(self.device))
+
+        centroids = {}
+        for cluster_id, vecs in cluster_to_vecs.items():
+            if len(vecs) == 0:
+                continue
+            centroid = torch.stack(vecs, dim=0).mean(dim=0)
+            centroid = F.normalize(centroid.unsqueeze(0), dim=-1).squeeze(0)
+            centroids[cluster_id] = centroid
+        return centroids
+
+    def _compute_similarity_to_clusters(self, update_vec, cluster_centroids):
+        """计算一个客户端与所有簇中心的相似度 (余弦相似度)"""
+        update_vec = torch.as_tensor(update_vec, dtype=torch.float32, device=self.device)
+        update_vec = F.normalize(update_vec.unsqueeze(0), dim=-1).squeeze(0)
 
         similarities = []
-        for cluster_model in self.cluster_models:
-            # 对简单起见，计算参数向量本身的相似度（可以扩展为特征相似度）
-            cluster_params = torch.cat([p.view(-1) for p in cluster_model.parameters()])
-            cluster_params = F.normalize(cluster_params.unsqueeze(0), dim=-1)
-            sim = torch.nn.functional.cosine_similarity(update_vec, cluster_params).item()
+        for cluster_id in range(self.num_clusters):
+            centroid = cluster_centroids.get(cluster_id)
+            if centroid is None:
+                similarities.append(-1.0)
+                continue
+            if centroid.shape != update_vec.shape:
+                similarities.append(-1.0)
+                continue
+            sim = torch.nn.functional.cosine_similarity(update_vec.unsqueeze(0), centroid.unsqueeze(0)).item()
             similarities.append(sim)
         return similarities
 
@@ -175,11 +194,19 @@ class MCFLServer:
         """
         outliers = []
         drift_candidates = []  # (client_id, best_new_cluster_id)
+        cluster_centroids = self._build_cluster_centroids(clients, client_cluster_vecs)
 
-        for i, (client, vec, stats) in enumerate(zip(clients, client_cluster_vecs, stats_list)):
-            sims = self._compute_similarity_to_clusters(vec.cpu().numpy())
-            max_sim = max(sims)
-            current_cluster_sim = sims[client.cluster_id]
+        for _, (client, vec, stats) in enumerate(zip(clients, client_cluster_vecs, stats_list)):
+            sims = self._compute_similarity_to_clusters(vec, cluster_centroids)
+            if len(sims) == 0:
+                continue
+            max_sim = float(max(sims))
+            current_cluster_sim = -1.0
+            current_cluster_id = int(client.cluster_id)
+            for cid, sim in enumerate(sims):
+                if cid == current_cluster_id:
+                    current_cluster_sim = float(sim)
+                    break
 
             if max_sim < self.outlier_threshold:
                 # 剧烈漂移：与所有簇都不相像 → 候选孤立点
@@ -187,8 +214,11 @@ class MCFLServer:
                 print(f"[MCFL] Client {client.id} detected as outlier (max_sim={max_sim:.3f} < {self.outlier_threshold})")
             elif current_cluster_sim < self.drift_severity_low:
                 # 轻微/中度漂移：看是否可从其他簇获益
-                other_best_cluster = max(range(len(sims)), key=lambda j: sims[j] if j != client.cluster_id else -1)
-                other_best_sim = sims[other_best_cluster]
+                other_best_cluster = max(
+                    range(len(sims)),
+                    key=lambda j: float(sims[j]) if j != current_cluster_id else -1.0,
+                )
+                other_best_sim = float(sims[other_best_cluster])
                 if other_best_sim > current_cluster_sim and other_best_sim > self.drift_severity_high:
                     drift_candidates.append((client.id, other_best_cluster))
                     print(f"[MCFL] Client {client.id} may benefit from switching to cluster {other_best_cluster} "
@@ -239,15 +269,6 @@ class MCFLServer:
                         break
             self.outlier_pool = []  # 清空积累的孤立点
 
-    def _sanitize_update_matrix(self, update_mat):
-        finite_mask = torch.isfinite(update_mat)
-        if finite_mask.all():
-            return update_mat, 0
-
-        cleaned = torch.nan_to_num(update_mat.detach(), nan=0.0, posinf=1e6, neginf=-1e6)
-        cleaned = torch.clamp(cleaned, min=-1e6, max=1e6)
-        bad_rows = (~finite_mask).any(dim=1).sum().item()
-        return cleaned, int(bad_rows)
 
     def should_recluster(self, current_round):
         """放松版聚类策略：缩短 warmup，减少保守阶段，允许更频繁重聚类。"""
