@@ -2,6 +2,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 import copy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
@@ -68,6 +69,20 @@ def print_python_command():
     print("COMMAND LINE:")
     print(command)
     print("=" * 80)
+
+
+def format_timezone_now(offset_hours=8):
+    tz = timezone(timedelta(hours=offset_hours))
+    now = datetime.now(tz)
+    return f"{now.strftime('%Y-%m-%d %H:%M:%S')} UTC+08:00"
+
+
+def print_experiment_start_time():
+    print(f"Experiment start time (UTC+8): {format_timezone_now(8)}")
+
+
+def print_experiment_end_time():
+    print(f"Experiment end time (UTC+8): {format_timezone_now(8)}")
 
 
 def print_run_summary(args):
@@ -201,6 +216,7 @@ def run_mcfl(args):
     best_test_acc = float("-inf")
 
     for rnd in range(args.global_rounds):
+        print(f"Round {rnd:03d} start")
         s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.mcfl_seed + rnd)
         stats = server.train_round(
@@ -241,10 +257,10 @@ def run_mcfl(args):
                 {"outliers": 0, "new_clusters": 0, "total_clusters": len(server.cluster_models), "reassigned": 0},
             )
             dynamic_suffix = (
-                f" | outliers={dynamic_summary['outliers']} | "
+                f"outliers={dynamic_summary['outliers']} | "
                 f"new_clusters={dynamic_summary['new_clusters']} | "
                 f"total_clusters={dynamic_summary['total_clusters']} | "
-                f"reassigned={dynamic_summary['reassigned']}"
+                f"reassigned={dynamic_summary['reassigned']} | "
             )
 
         print(
@@ -261,6 +277,7 @@ def run_mcfl(args):
         best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
         budget.append(time.time() - s_t)
         print('-' * 25, 'time cost', '-' * 25, f"{budget[-1]:.2f}")
+        print(f"Round {rnd:03d} end")
 
     if budget:
         print("\nBest accuracy.")
@@ -316,6 +333,7 @@ def run_cfl(args):
     acc_clients = [client.evaluate() for client in clients]
 
     for c_round in range(1, args.global_rounds + 1):
+        print(f"Round {c_round:03d} start")
         if c_round == 1:
             server.synchronize_clients(clients)
 
@@ -370,6 +388,8 @@ def run_cfl(args):
             f"max_norm={last_max_norm:.4f} | "
             f"clusters={cluster_hist}"
         )
+
+        print(f"Round {c_round:03d} end")
 
         if args.cfl_plot_every and c_round % args.cfl_plot_every == 0:
             display_train_stats(cfl_stats, args.cfl_eps_1, args.cfl_eps_2, args.global_rounds)
@@ -483,6 +503,7 @@ def run_ifca(args):
     best_test_acc = initial["test_acc"] if task != "regression" else float("-inf")
 
     for rnd in range(args.global_rounds):
+        print(f"Round {rnd:03d} start")
         s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.ifca_seed + rnd)
         server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau, clients=participating_clients)
@@ -503,6 +524,7 @@ def run_ifca(args):
             best_test_acc = max(best_test_acc, eval_stats["test_acc"])
         budget.append(time.time() - s_t)
         print('-' * 25, 'time cost', '-' * 25, f"{budget[-1]:.2f}")
+        print(f"Round {rnd:03d} end")
 
     if budget:
         print("\nBest accuracy.")
@@ -584,10 +606,15 @@ def run(args):
 
 if __name__ == "__main__":
     total_start = time.time()
-
     args = get_args()
     resolve_device(args)
     with maybe_log_to_file(args.log_file, append=args.log_append):
+        print_experiment_start_time()
         print_python_command()
         print_run_summary(args)
-        run(args)
+        try:
+            run(args)
+        finally:
+            print_experiment_end_time()
+            total_runtime = time.time() - total_start
+            print(f"Total runtime: {total_runtime:.2f} seconds")

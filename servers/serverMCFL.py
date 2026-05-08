@@ -113,9 +113,11 @@ class MCFLServer:
                         dim=-1,
                     )
                     print("[MCFL] Recluster sanitized non-finite encoder embeddings.")
-            return embeddings.detach().cpu().numpy()
+            # 返回 torch tensor，保持在当前设备（GPU/CPU）上
+            return embeddings.detach()
 
-        return normalized_updates.detach().cpu().numpy()
+        # 返回 torch tensor，不转换到 numpy，保持在设备上
+        return normalized_updates.detach()
 
     def _blend_cluster_models(self, cluster_to_params):
         if self.model_mix <= 0:
@@ -366,21 +368,28 @@ class MCFLServer:
             sanitize_model_(model)
 
     def recluster_clients(self, clients, client_cluster_vecs, old_assignments=None):
-        """改进 3: 重聚类时检查变化, 避免微小波动导致的频繁重组"""
+        """改进 3: 重聚类时检查变化, 避免微小波动导致的频繁重组
+        
+        支持 torch tensor 在 GPU 上聚类，无需转换到 CPU。
+        """
         with torch.no_grad():
             update_mat = torch.stack(client_cluster_vecs, dim=0).to(self.device)
             cluster_points = self._build_cluster_points(update_mat)
+            # cluster_points 现在是 torch tensor，保持在当前设备上
 
         if self.cluster_method == "agglomerative":
+            # agglomerative 暂时还是用 numpy（如需优化可后续加 GPU 版）
             assignments = agglomerative_cluster(
-                cluster_points,
+                cluster_points.cpu().numpy() if isinstance(cluster_points, torch.Tensor) else cluster_points,
                 num_clusters=self.num_clusters,
             )
         else:
+            # kmeans 现在支持 torch tensor 和 GPU
             assignments = kmeans_cluster(
                 cluster_points,
                 num_clusters=self.num_clusters,
                 seed=42,
+                device=self.device,
             )
 
         # 改进 3: 检查新聚类是否应该应用

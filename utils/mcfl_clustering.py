@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 try:
     from sklearn.cluster import KMeans
@@ -34,7 +35,39 @@ def _kmeans_numpy(points, num_clusters, seed=42, max_iters=50):
     return labels
 
 
-def kmeans_cluster(embeddings, num_clusters, seed=42):
+def kmeans_cluster(embeddings, num_clusters, seed=42, device=None):
+    """K-means clustering with GPU support.
+
+    Args:
+        embeddings: numpy array or torch tensor
+        num_clusters: number of clusters
+        seed: random seed
+        device: 'cpu', 'cuda', torch.device, or None (auto-detect from torch tensor if passed)
+
+    Returns:
+        numpy array of cluster labels
+    """
+    # Auto-detect device from tensor if embeddings is already on GPU
+    if isinstance(embeddings, torch.Tensor):
+        if device is None:
+            device = embeddings.device
+        # Convert to string if it's a torch.device object
+        device_str = str(device) if not isinstance(device, str) else device
+        # Use PyTorch version for GPU tensors
+        if "cuda" in device_str or embeddings.device.type == "cuda":
+            return _kmeans_torch(embeddings, num_clusters, seed=seed, device=embeddings.device)
+
+    # Fallback for numpy arrays or CPU
+    if device is None:
+        device = "cpu"
+    else:
+        device = str(device) if not isinstance(device, str) else device
+
+    if isinstance(embeddings, torch.Tensor):
+        # Try PyTorch version even for CPU (faster convergence for large datasets)
+        return _kmeans_torch(embeddings, num_clusters, seed=seed, device=device)
+
+    # Original numpy path for compatibility
     points = np.asarray(embeddings, dtype=np.float32)
     n_points = len(points)
 
@@ -54,6 +87,44 @@ def kmeans_cluster(embeddings, num_clusters, seed=42):
         return kmeans.fit_predict(points)
 
     return _kmeans_numpy(points, num_clusters=num_clusters, seed=seed)
+
+
+def _kmeans_torch(points_tensor, num_clusters, seed=42, max_iters=50, device="cpu"):
+    """PyTorch KMeans implementation that runs on any device (CPU/GPU)."""
+    if not isinstance(points_tensor, torch.Tensor):
+        points_tensor = torch.as_tensor(points_tensor, dtype=torch.float32, device=device)
+    else:
+        points_tensor = points_tensor.to(device)
+
+    n_points = points_tensor.shape[0]
+
+    # Initialize centers
+    torch.manual_seed(seed)
+    indices = torch.randperm(n_points, device=device)[:num_clusters]
+    centers = points_tensor[indices].clone()
+
+    labels = torch.zeros(n_points, dtype=torch.long, device=device)
+
+    for iteration in range(max_iters):
+        # Calculate distances
+        distances = torch.cdist(points_tensor, centers)  # (n_points, num_clusters)
+        new_labels = distances.argmin(dim=1)
+
+        if torch.equal(new_labels, labels):
+            break
+        labels = new_labels
+
+        # Update centers
+        for cluster_id in range(num_clusters):
+            mask = labels == cluster_id
+            if mask.sum() == 0:
+                new_idx = torch.randint(n_points, (1,), device=device).item()
+                centers[cluster_id] = points_tensor[new_idx].clone()
+            else:
+                centers[cluster_id] = points_tensor[mask].mean(dim=0)
+
+    return labels.cpu().numpy()
+
 
 
 def _sanitize_points(embeddings):
