@@ -95,10 +95,24 @@ def _split_dataset(dataset, support_ratio, seed, min_query_size=1):
     return support_subset, query_subset
 
 
-def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed):
+def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed, num_workers=0, pin_memory=False):
     support_dataset, query_dataset = _split_dataset(dataset, support_ratio, seed)
-    support_loader = DataLoader(support_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
-    query_loader = DataLoader(query_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+    support_loader = DataLoader(
+        support_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    query_loader = DataLoader(
+        query_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
     return support_loader, query_loader
 
 
@@ -130,6 +144,8 @@ def _make_real_clients(args):
             batch_size=args.batch_size,
             support_ratio=args.mcfl_support_ratio,
             seed=args.mcfl_seed + cid,
+            num_workers=getattr(args, 'mcfl_num_workers', 0),
+            pin_memory=(getattr(args, 'mcfl_client_device_resolved', args.device) == 'cuda'),
         )
         test_samples = read_client_data(dataset_name, cid, is_train=False, few_shot=args.few_shot)
         test_dataset, _ = _stack_samples_for_backbone(
@@ -186,6 +202,8 @@ def _make_synthetic_clients(args):
             batch_size=args.batch_size,
             support_ratio=args.mcfl_support_ratio,
             seed=args.mcfl_seed + cid,
+            num_workers=getattr(args, 'mcfl_num_workers', 0),
+            pin_memory=(getattr(args, 'mcfl_client_device_resolved', args.device) == 'cuda'),
         )
 
         clients.append(

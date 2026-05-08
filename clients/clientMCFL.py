@@ -190,81 +190,104 @@ class MCFLClient:
         if local_epochs is None:
             local_epochs = self.local_epochs
 
-        if self.device == "cuda" and first_order:
-            adapted_model, support_stats = self._adapt_model_copy(
-                meta_model,
-                inner_lr=inner_lr,
-                local_epochs=local_epochs,
-                phase_prefix="support",
-            )
-            adapted_model.train()
+        # 统一使用参数字典（functional_call）路径进行本地适配，避免为每个客户端 deepcopy 模型
+        # 这样可以减少内存拷贝与 CPU/GPU 传输开销，提升并行效率。
+        params = clone_params_dict(meta_model)
+        original_params = {name: p for name, p in params.items()}
+        head_param_names = infer_head_param_names(params)
+        adapt_param_names = list(params.keys())
 
-            query_loss_total = 0.0
-            query_samples = 0
-            query_correct = 0
-            query_loss_tensor = None
-            for batch_idx, (x_q, y_q) in enumerate(self.query_loader):
-                x_q, y_q = self._prepare_batch(x_q, y_q, "query", batch_idx)
-                logits_q = adapted_model(x_q)
-                self._check_logits_and_labels(logits_q, y_q, "query", batch_idx)
-                batch_query_loss = F.cross_entropy(logits_q, y_q)
-                if not torch.isfinite(batch_query_loss):
-                    raise ValueError(
-                        f"MCFL query loss is non-finite in batch {batch_idx}: {float(batch_query_loss.item())}."
-                    )
+        support_loss_total = 0.0
+        support_samples = 0
+        support_correct = 0
+        for _ in range(local_epochs):
+            for batch_idx, (x_s, y_s) in enumerate(self.support_loader):
+                x_s, y_s = self._prepare_batch(x_s, y_s, "support", batch_idx)
 
-                weighted_loss = batch_query_loss * y_q.size(0)
-                query_loss_tensor = weighted_loss if query_loss_tensor is None else query_loss_tensor + weighted_loss
-                preds_q = torch.argmax(logits_q, dim=1)
-                query_correct += (preds_q == y_q).sum().item()
-                query_loss_total += weighted_loss.item()
-                query_samples += y_q.size(0)
+                logits_s = functional_call(meta_model, params, (x_s,))
+                self._check_logits_and_labels(logits_s, y_s, "support", batch_idx)
+                support_loss = F.cross_entropy(logits_s, y_s)
+                if not torch.isfinite(support_loss):
+                    raise ValueError(f"MCFL support loss is non-finite in batch {batch_idx}: {float(support_loss.item())}.")
 
-            if query_loss_tensor is None:
-                raise RuntimeError("MCFL query loader is empty.")
+                support_grads = torch.autograd.grad(
+                    support_loss,
+                    [params[name] for name in adapt_param_names],
+                    create_graph=not first_order,
+                    allow_unused=False,
+                )
 
-            query_loss = query_loss_tensor / query_samples
-            if not torch.isfinite(query_loss):
-                raise ValueError(f"MCFL query loss became non-finite after aggregation: {float(query_loss.item())}.")
+                updated_params = dict(params)
+                for name, grad in zip(adapt_param_names, support_grads):
+                    updated_params[name] = updated_params[name] - inner_lr * grad
+                params = updated_params
+                params = sanitize_params_dict(params)
 
-            meta_grads = torch.autograd.grad(
-                query_loss,
-                tuple(adapted_model.parameters()),
-                create_graph=True,  # ← 改进 4: 保留计算图用于标准 MAML 实现
-                allow_unused=True,
-            )
-            meta_grads = self._materialize_grads(meta_grads, tuple(adapted_model.parameters()))
+                preds_s = torch.argmax(logits_s, dim=1)
+                support_correct += (preds_s == y_s).sum().item()
+                support_loss_total += support_loss.item() * y_s.size(0)
+                support_samples += y_s.size(0)
 
-            original_params = {
-                name: param.detach().clone()
-                for name, param in meta_model.named_parameters()
-            }
-            adapted_params = {
-                name: param.detach().clone()
-                for name, param in adapted_model.named_parameters()
-            }
-            head_param_names = infer_head_param_names(adapted_params)
-            original_vec = vectorize_params_dict(original_params)
-            adapted_vec = vectorize_params_dict(adapted_params)
-            update_vec = adapted_vec - original_vec
-            head_update_vec = (
-                vectorize_selected_params(adapted_params, head_param_names)
-                - vectorize_selected_params(original_params, head_param_names)
-            )
+        query_loss_total = 0.0
+        query_samples = 0
+        query_correct = 0
+        query_loss_tensor = None
+        for batch_idx, (x_q, y_q) in enumerate(self.query_loader):
+            x_q, y_q = self._prepare_batch(x_q, y_q, "query", batch_idx)
+            logits_q = functional_call(meta_model, params, (x_q,))
+            self._check_logits_and_labels(logits_q, y_q, "query", batch_idx)
+            batch_query_loss = F.cross_entropy(logits_q, y_q)
+            if not torch.isfinite(batch_query_loss):
+                raise ValueError(
+                    f"MCFL query loss is non-finite in batch {batch_idx}: {float(batch_query_loss.item())}."
+                )
 
-            stats = {
-                "client_id": self.client_id,
-                "cluster_id": self.cluster_id,
-                "support_loss": support_stats["support_loss"],
-                "query_loss": query_loss_total / max(query_samples, 1),
-                "support_acc": support_stats["support_acc"],
-                "query_acc": query_correct / max(query_samples, 1),
-                "support_samples": support_stats["support_samples"],
-                "query_samples": query_samples,
-                "support_correct": support_stats["support_correct"],
-                "query_correct": query_correct,
-            }
-            return meta_grads, update_vec, head_update_vec, adapted_params, stats
+            weighted_loss = batch_query_loss * y_q.size(0)
+            query_loss_tensor = weighted_loss if query_loss_tensor is None else query_loss_tensor + weighted_loss
+            preds_q = torch.argmax(logits_q, dim=1)
+            query_correct += (preds_q == y_q).sum().item()
+            query_loss_total += weighted_loss.item()
+            query_samples += y_q.size(0)
+
+        if query_loss_tensor is None:
+            raise RuntimeError("MCFL query loader is empty.")
+
+        query_loss = query_loss_tensor / query_samples
+        if not torch.isfinite(query_loss):
+            raise ValueError(f"MCFL query loss became non-finite after aggregation: {float(query_loss.item())}.")
+
+        meta_grads = torch.autograd.grad(
+            query_loss,
+            [params[name] for name in original_params.keys()],
+            create_graph=not first_order,
+            allow_unused=True,
+        )
+        meta_grads = self._materialize_grads(meta_grads, tuple(original_params.values()))
+
+        original_vec = vectorize_params_dict(original_params).detach()
+        adapted_vec = vectorize_params_dict(params).detach()
+        update_vec = adapted_vec - original_vec
+        head_update_vec = (
+            vectorize_selected_params(params, head_param_names).detach()
+            - vectorize_selected_params(original_params, head_param_names).detach()
+        )
+        adapted_params = {
+            name: value.detach().clone()
+            for name, value in params.items()
+        }
+
+        stats = {
+            "client_id": self.client_id,
+            "cluster_id": self.cluster_id,
+            "support_loss": support_loss_total / max(support_samples, 1),
+            "query_loss": query_loss_total / max(query_samples, 1),
+            "support_acc": support_correct / max(support_samples, 1),
+            "query_acc": query_correct / max(query_samples, 1),
+            "support_samples": support_samples,
+            "query_samples": query_samples,
+            "support_correct": support_correct,
+            "query_correct": query_correct,
+        }
 
         params = clone_params_dict(meta_model)
         original_params = {name: p for name, p in params.items()}

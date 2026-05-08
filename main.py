@@ -130,8 +130,11 @@ def run_mcfl(args):
 
     set_seed(args.mcfl_seed)
 
+    # 默认将客户端设备和主设备保持一致（在有 GPU 的情况下让客户端使用 GPU），
+    # 如果用户明确传入 --mcfl_client_device 可覆盖该行为。
     if args.mcfl_client_device == "auto":
-        args.mcfl_client_device_resolved = "cpu" if args.device == "cuda" else args.device
+        # 如果主设备是 cuda 或 mps，则默认让客户端也使用相同设备以提升并行计算效率。
+        args.mcfl_client_device_resolved = args.device
     else:
         args.mcfl_client_device_resolved = args.mcfl_client_device
 
