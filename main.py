@@ -169,9 +169,12 @@ def run_mcfl(args):
     with torch.no_grad():
         base_model(warmup_x.to(args.device))
 
+    # 处理初始簇数参数（向后兼容）
+    initial_clusters = args.mcfl_initial_clusters if args.mcfl_initial_clusters is not None else args.mcfl_num_clusters
+    
     server = MCFLServer(
         global_model=base_model,
-        num_clusters=args.mcfl_num_clusters,
+        num_clusters=initial_clusters,
         encoder_embed_dim=args.mcfl_encoder_embed_dim,
         outer_lr=args.mcfl_outer_lr,
         model_mix=args.mcfl_model_mix,
@@ -186,6 +189,12 @@ def run_mcfl(args):
         cluster_method=args.mcfl_cluster_method,
         cluster_feature=args.mcfl_cluster_feature,
         algorithm=args.mcfl_algorithm,
+        enable_dynamic_clustering=args.mcfl_enable_dynamic_clustering,
+        outlier_threshold=args.mcfl_outlier_threshold,
+        drift_severity_low=args.mcfl_drift_severity_low,
+        drift_severity_high=args.mcfl_drift_severity_high,
+        outlier_pooling_threshold=args.mcfl_outlier_pooling_threshold,
+        agglomerative_threshold=args.mcfl_agglomerative_threshold,
     )
 
     server.assign_initial_clusters(clients)

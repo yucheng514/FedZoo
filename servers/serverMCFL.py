@@ -28,6 +28,12 @@ class MCFLServer:
         cluster_method="kmeans",
         cluster_feature="updates",
         algorithm="fomaml",
+        enable_dynamic_clustering=False,
+        outlier_threshold=0.3,
+        drift_severity_low=0.5,
+        drift_severity_high=0.2,
+        outlier_pooling_threshold=3,
+        agglomerative_threshold=0.5,
     ):
         self.device = device
         self.num_clusters = num_clusters
@@ -45,6 +51,15 @@ class MCFLServer:
         self.algorithm = algorithm
         self.recluster_count = 0
         
+        # 动态聚类参数
+        self.enable_dynamic_clustering = enable_dynamic_clustering
+        self.outlier_threshold = outlier_threshold
+        self.drift_severity_low = drift_severity_low
+        self.drift_severity_high = drift_severity_high
+        self.outlier_pooling_threshold = outlier_pooling_threshold
+        self.agglomerative_threshold = agglomerative_threshold
+        self.outlier_pool = []  # 存储孤立点的 client_id
+
         # 用于检测剧烈漂移的 EMA 追踪
         self.loss_ema = None
         self.drift_threshold = 1.2  # 损失突增 20% 视为剧烈漂移
@@ -54,6 +69,7 @@ class MCFLServer:
             copy.deepcopy(global_model).to(device)
             for _ in range(num_clusters)
         ]
+        self.base_model = global_model  # 保存基础模型用于计算相似度
 
         update_dim = count_parameters(global_model)
         self.encoder = MCFLClientEncoder(update_dim, encoder_embed_dim).to(device)
@@ -97,17 +113,24 @@ class MCFLServer:
         if self.model_mix <= 0:
             return
 
-        for cluster_id in range(self.num_clusters):
-            if len(cluster_to_params[cluster_id]) == 0:
+        # 动态支持所有存在的簇（即使簇数变化）
+        max_cluster_id = max(cluster_to_params.keys()) if cluster_to_params else -1
+        for cluster_id in range(max(self.num_clusters, max_cluster_id + 1)):
+            if len(cluster_to_params.get(cluster_id, [])) == 0:
+                continue
+
+            # 如果簇 ID 超出当前 cluster_models 范围，跳过
+            if cluster_id >= len(self.cluster_models):
                 continue
 
             model = self.cluster_models[cluster_id]
+            params_list = cluster_to_params[cluster_id]
             client_param_names = set.intersection(
-                *(set(params.keys()) for params, _ in cluster_to_params[cluster_id])
+                *(set(params.keys()) for params, _ in params_list)
             )
-            total_weight = sum(weight for _, weight in cluster_to_params[cluster_id])
+            total_weight = sum(weight for _, weight in params_list)
             if total_weight <= 0:
-                total_weight = float(len(cluster_to_params[cluster_id]))
+                total_weight = float(len(params_list))
 
             averaged_params = {}
             param_names = [
@@ -116,7 +139,7 @@ class MCFLServer:
             ]
             for name in param_names:
                 stacked = torch.stack(
-                    [params[name].detach().to(self.device) * weight for params, weight in cluster_to_params[cluster_id]],
+                    [params[name].detach().to(self.device) * weight for params, weight in params_list],
                     dim=0,
                 )
                 averaged_params[name] = stacked.sum(dim=0) / total_weight
@@ -129,9 +152,102 @@ class MCFLServer:
                     value.copy_(mixed)
             sanitize_model_(model)
 
-    def _should_recluster(self, round_idx):
-        """向后兼容包装"""
-        return self.should_recluster(round_idx + 1)
+    def _compute_similarity_to_clusters(self, update_vec):
+        """计算一个客户端与所有簇模型的相似度 (余弦相似度)"""
+        update_vec = torch.tensor(update_vec, dtype=torch.float32).to(self.device)
+        update_vec = F.normalize(update_vec.unsqueeze(0), dim=-1)
+
+        similarities = []
+        for cluster_model in self.cluster_models:
+            # 对简单起见，计算参数向量本身的相似度（可以扩展为特征相似度）
+            cluster_params = torch.cat([p.view(-1) for p in cluster_model.parameters()])
+            cluster_params = F.normalize(cluster_params.unsqueeze(0), dim=-1)
+            sim = torch.nn.functional.cosine_similarity(update_vec, cluster_params).item()
+            similarities.append(sim)
+        return similarities
+
+    def _detect_outliers_and_drift(self, clients, client_cluster_vecs, stats_list):
+        """
+        孤立点检测与漂移分类：
+        - 轻微漂移：与当前簇相似度低，但与某个其他簇相似度高 → 可跳槽
+        - 中度漂移：与所有簇都有一定相似度，内循环可掩盖
+        - 剧烈漂移：与所有簇都相似度很低 → 标记为孤立点
+        """
+        outliers = []
+        drift_candidates = []  # (client_id, best_new_cluster_id)
+
+        for i, (client, vec, stats) in enumerate(zip(clients, client_cluster_vecs, stats_list)):
+            sims = self._compute_similarity_to_clusters(vec.cpu().numpy())
+            max_sim = max(sims)
+            current_cluster_sim = sims[client.cluster_id]
+
+            if max_sim < self.outlier_threshold:
+                # 剧烈漂移：与所有簇都不相像 → 候选孤立点
+                outliers.append(client.id)
+                print(f"[MCFL] Client {client.id} detected as outlier (max_sim={max_sim:.3f} < {self.outlier_threshold})")
+            elif current_cluster_sim < self.drift_severity_low:
+                # 轻微/中度漂移：看是否可从其他簇获益
+                other_best_cluster = max(range(len(sims)), key=lambda j: sims[j] if j != client.cluster_id else -1)
+                other_best_sim = sims[other_best_cluster]
+                if other_best_sim > current_cluster_sim and other_best_sim > self.drift_severity_high:
+                    drift_candidates.append((client.id, other_best_cluster))
+                    print(f"[MCFL] Client {client.id} may benefit from switching to cluster {other_best_cluster} "
+                          f"(current sim={current_cluster_sim:.3f}, best sim={other_best_sim:.3f})")
+
+        return outliers, drift_candidates
+
+    def _create_new_cluster(self, global_model):
+        """创建新簇模型"""
+        new_cluster_model = copy.deepcopy(global_model).to(self.device)
+        new_cluster_models_list = self.cluster_models + [new_cluster_model]
+        self.cluster_models = new_cluster_models_list
+        self.num_clusters = len(self.cluster_models)
+        print(f"[MCFL] New cluster created! Now have {self.num_clusters} clusters.")
+        return self.num_clusters - 1  # 返回新簇的 ID
+
+    def _handle_dynamic_clustering(self, clients, client_cluster_vecs, stats_list, global_model):
+        """
+        动态聚类处理流程：
+        1. 检测孤立点和漂移
+        2. 尝试将轻微漂移的客户端重新分配
+        3. 当孤立点积累到阈值时，创建新簇
+        """
+        if not self.enable_dynamic_clustering:
+            return
+
+        outliers, drift_candidates = self._detect_outliers_and_drift(clients, client_cluster_vecs, stats_list)
+
+        # 处理轻微漂移：允许从其他簇跳槽
+        for client_id, new_cluster_id in drift_candidates:
+            for client in clients:
+                if client.id == client_id:
+                    old_cluster = client.cluster_id
+                    client.cluster_id = new_cluster_id
+                    print(f"[MCFL] Client {client_id} reassigned from cluster {old_cluster} to {new_cluster_id}")
+                    break
+
+        # 积累孤立点
+        self.outlier_pool.extend(outliers)
+
+        # 如果孤立点达到阈值，创建新簇并分配它们
+        if len(self.outlier_pool) >= self.outlier_pooling_threshold:
+            new_cluster_id = self._create_new_cluster(global_model)
+            for client_id in self.outlier_pool:
+                for client in clients:
+                    if client.id == client_id:
+                        client.cluster_id = new_cluster_id
+                        break
+            self.outlier_pool = []  # 清空积累的孤立点
+
+    def _sanitize_update_matrix(self, update_mat):
+        finite_mask = torch.isfinite(update_mat)
+        if finite_mask.all():
+            return update_mat, 0
+
+        cleaned = torch.nan_to_num(update_mat.detach(), nan=0.0, posinf=1e6, neginf=-1e6)
+        cleaned = torch.clamp(cleaned, min=-1e6, max=1e6)
+        bad_rows = (~finite_mask).any(dim=1).sum().item()
+        return cleaned, int(bad_rows)
 
     def should_recluster(self, current_round):
         """放松版聚类策略：缩短 warmup，减少保守阶段，允许更频繁重聚类。"""
@@ -172,20 +288,27 @@ class MCFLServer:
         return [client.cluster_id for client in clients]
 
     def aggregate_meta_grads(self, cluster_to_grads):
-        for cluster_id in range(self.num_clusters):
-            if len(cluster_to_grads[cluster_id]) == 0:
+        # 动态支持所有存在的簇（即使簇数变化）
+        max_cluster_id = max(cluster_to_grads.keys()) if cluster_to_grads else -1
+        for cluster_id in range(max(self.num_clusters, max_cluster_id + 1)):
+            if len(cluster_to_grads.get(cluster_id, [])) == 0:
+                continue
+
+            # 如果簇 ID 超出当前 cluster_models 范围，跳过
+            if cluster_id >= len(self.cluster_models):
                 continue
 
             model = self.cluster_models[cluster_id]
+            grads = cluster_to_grads[cluster_id]
             num_params = len(list(model.parameters()))
-            total_weight = sum(weight for _, weight in cluster_to_grads[cluster_id])
+            total_weight = sum(weight for _, weight in grads)
             if total_weight <= 0:
-                total_weight = float(len(cluster_to_grads[cluster_id]))
+                total_weight = float(len(grads))
 
             avg_grads = []
             for p_idx in range(num_params):
                 stacked = torch.stack(
-                    [grads[p_idx].detach() * weight for grads, weight in cluster_to_grads[cluster_id]],
+                    [g[p_idx].detach() * weight for g, weight in grads],
                     dim=0,
                 )
                 avg_grads.append(stacked.sum(dim=0) / total_weight)
@@ -276,5 +399,8 @@ class MCFLServer:
         if severe_drift_detected or self.should_recluster(round_idx):
             # 传入旧的聚类分配用于对比，以确保重组是低成本的（避免不必要的频繁小范围换簇）
             self.recluster_clients(clients, client_cluster_vecs, old_assignments=old_cluster_assignment)
+
+        # 动态聚类处理：检测漂移并根据需要分裂或合并簇
+        self._handle_dynamic_clustering(clients, client_cluster_vecs, stats_list, self.cluster_models[0] if self.cluster_models else None)
 
         return stats_list
