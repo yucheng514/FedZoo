@@ -233,6 +233,20 @@ def run_mcfl(args):
             for client in clients
         ]
 
+        dynamic_suffix = ""
+        if getattr(args, "mcfl_enable_dynamic_clustering", False):
+            dynamic_summary = getattr(
+                server,
+                "last_dynamic_cluster_summary",
+                {"outliers": 0, "new_clusters": 0, "total_clusters": len(server.cluster_models), "reassigned": 0},
+            )
+            dynamic_suffix = (
+                f" | outliers={dynamic_summary['outliers']} | "
+                f"new_clusters={dynamic_summary['new_clusters']} | "
+                f"total_clusters={dynamic_summary['total_clusters']} | "
+                f"reassigned={dynamic_summary['reassigned']}"
+            )
+
         print(
             f"Round {rnd:03d} | "
             f"support_loss={avg_support:.4f} | "
@@ -241,6 +255,7 @@ def run_mcfl(args):
             f"query_acc={query_acc:.4f} | "
             f"test_acc={sum(adapted_test_accs) / len(adapted_test_accs):.4f} | "
             f"raw_test_acc={sum(raw_test_accs) / len(raw_test_accs):.4f} | "
+            f"{dynamic_suffix}"
             f"clusters={dict(cluster_hist)}"
         )
         best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))

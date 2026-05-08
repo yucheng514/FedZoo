@@ -58,7 +58,15 @@ class MCFLServer:
         self.drift_severity_high = drift_severity_high
         self.outlier_pooling_threshold = outlier_pooling_threshold
         self.agglomerative_threshold = agglomerative_threshold
-        self.outlier_pool = []  # 存储孤立点的 client_id
+        self.outlier_pool = set()  # 存储孤立点的 client_id（去重）
+
+        # 每轮动态聚类统计信息，供主循环打印日志
+        self.last_dynamic_cluster_summary = {
+            "outliers": 0,
+            "new_clusters": 0,
+            "total_clusters": self.num_clusters,
+            "reassigned": 0,
+        }
 
         # 用于检测剧烈漂移的 EMA 追踪
         self.loss_ema = None
@@ -210,8 +218,8 @@ class MCFLServer:
 
             if max_sim < self.outlier_threshold:
                 # 剧烈漂移：与所有簇都不相像 → 候选孤立点
-                outliers.append(client.id)
-                print(f"[MCFL] Client {client.id} detected as outlier (max_sim={max_sim:.3f} < {self.outlier_threshold})")
+                outliers.append(client.client_id)
+                print(f"[MCFL] Client {client.client_id} detected as outlier (max_sim={max_sim:.3f} < {self.outlier_threshold})")
             elif current_cluster_sim < self.drift_severity_low:
                 # 轻微/中度漂移：看是否可从其他簇获益
                 other_best_cluster = max(
@@ -220,15 +228,16 @@ class MCFLServer:
                 )
                 other_best_sim = float(sims[other_best_cluster])
                 if other_best_sim > current_cluster_sim and other_best_sim > self.drift_severity_high:
-                    drift_candidates.append((client.id, other_best_cluster))
-                    print(f"[MCFL] Client {client.id} may benefit from switching to cluster {other_best_cluster} "
+                    drift_candidates.append((client.client_id, other_best_cluster))
+                    print(f"[MCFL] Client {client.client_id} may benefit from switching to cluster {other_best_cluster} "
                           f"(current sim={current_cluster_sim:.3f}, best sim={other_best_sim:.3f})")
 
         return outliers, drift_candidates
 
-    def _create_new_cluster(self, global_model):
+    def _create_new_cluster(self, global_model=None):
         """创建新簇模型"""
-        new_cluster_model = copy.deepcopy(global_model).to(self.device)
+        template_model = global_model if global_model is not None else self.base_model
+        new_cluster_model = copy.deepcopy(template_model).to(self.device)
         new_cluster_models_list = self.cluster_models + [new_cluster_model]
         self.cluster_models = new_cluster_models_list
         self.num_clusters = len(self.cluster_models)
@@ -243,31 +252,48 @@ class MCFLServer:
         3. 当孤立点积累到阈值时，创建新簇
         """
         if not self.enable_dynamic_clustering:
+            self.last_dynamic_cluster_summary = {
+                "outliers": 0,
+                "new_clusters": 0,
+                "total_clusters": self.num_clusters,
+                "reassigned": 0,
+            }
             return
 
         outliers, drift_candidates = self._detect_outliers_and_drift(clients, client_cluster_vecs, stats_list)
+        reassigned_count = 0
 
         # 处理轻微漂移：允许从其他簇跳槽
         for client_id, new_cluster_id in drift_candidates:
             for client in clients:
-                if client.id == client_id:
+                if client.client_id == client_id:
                     old_cluster = client.cluster_id
                     client.cluster_id = new_cluster_id
+                    reassigned_count += 1
                     print(f"[MCFL] Client {client_id} reassigned from cluster {old_cluster} to {new_cluster_id}")
                     break
 
         # 积累孤立点
-        self.outlier_pool.extend(outliers)
+        self.outlier_pool.update(outliers)
 
         # 如果孤立点达到阈值，创建新簇并分配它们
+        new_clusters_created = 0
         if len(self.outlier_pool) >= self.outlier_pooling_threshold:
             new_cluster_id = self._create_new_cluster(global_model)
-            for client_id in self.outlier_pool:
+            new_clusters_created = 1
+            for client_id in list(self.outlier_pool):
                 for client in clients:
-                    if client.id == client_id:
+                    if client.client_id == client_id:
                         client.cluster_id = new_cluster_id
                         break
-            self.outlier_pool = []  # 清空积累的孤立点
+            self.outlier_pool.clear()  # 清空积累的孤立点
+
+        self.last_dynamic_cluster_summary = {
+            "outliers": len(outliers),
+            "new_clusters": new_clusters_created,
+            "total_clusters": self.num_clusters,
+            "reassigned": reassigned_count,
+        }
 
 
     def should_recluster(self, current_round):
