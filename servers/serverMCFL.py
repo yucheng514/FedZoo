@@ -34,6 +34,7 @@ class MCFLServer:
         drift_severity_high=0.2,
         outlier_pooling_threshold=3,
         agglomerative_threshold=0.5,
+        global_reg=0.0,
     ):
         self.device = device
         self.num_clusters = num_clusters
@@ -78,6 +79,8 @@ class MCFLServer:
             for _ in range(num_clusters)
         ]
         self.base_model = global_model  # 保存基础模型用于计算相似度
+        # 全局正则化强度（把簇模型拉向 base/global 模型）
+        self.global_reg = global_reg
 
         update_dim = count_parameters(global_model)
         self.encoder = MCFLClientEncoder(update_dim, encoder_embed_dim).to(device)
@@ -236,6 +239,68 @@ class MCFLServer:
 
         return outliers, drift_candidates
 
+    def _merge_singleton_clusters(self, clients, client_cluster_vecs):
+        """合并簇中只有一个客户端的簇：
+        - 将该客户端合并到与其表示最相似的其他簇
+        - 清理空簇并重建 `self.cluster_models` 与 `self.num_clusters`
+        返回合并的数量
+        """
+        # 统计每个簇的客户端
+        cluster_counts = defaultdict(list)
+        for client in clients:
+            cluster_counts[int(client.cluster_id)].append(client)
+
+        if not cluster_counts:
+            return 0
+
+        cluster_centroids = self._build_cluster_centroids(clients, client_cluster_vecs)
+        merged = 0
+        for cid, cclients in list(cluster_counts.items()):
+            if len(cclients) != 1:
+                continue
+            client = cclients[0]
+            # 找到该客户端在 clients 列表的索引以读取对应向量
+            try:
+                idx = next(i for i, c in enumerate(clients) if c.client_id == client.client_id)
+                vec = client_cluster_vecs[idx]
+            except StopIteration:
+                continue
+
+            sims = self._compute_similarity_to_clusters(vec, cluster_centroids)
+            if not sims:
+                continue
+            # 排除自身簇
+            sims_excl = [(j, s) for j, s in enumerate(sims) if j != cid]
+            if not sims_excl:
+                continue
+            best = max(sims_excl, key=lambda x: x[1])[0]
+            old = client.cluster_id
+            client.cluster_id = int(best)
+            merged += 1
+            print(f"[MCFL] Singleton cluster {old} merged: client {client.client_id} -> cluster {best}")
+
+        if merged == 0:
+            return 0
+
+        # 重建簇模型：按当前存在的簇 id 列表进行重排，保证连续的索引
+        existing_ids = sorted({int(c.cluster_id) for c in clients})
+        id_map = {old_id: new_idx for new_idx, old_id in enumerate(existing_ids)}
+        new_models = []
+        for old_id in existing_ids:
+            if old_id < len(self.cluster_models) and self.cluster_models[old_id] is not None:
+                new_models.append(self.cluster_models[old_id])
+            else:
+                new_models.append(copy.deepcopy(self.base_model).to(self.device))
+
+        # 更新客户端 cluster_id 到新的连续索引
+        for client in clients:
+            client.cluster_id = int(id_map[int(client.cluster_id)])
+
+        self.cluster_models = new_models
+        self.num_clusters = len(self.cluster_models)
+        print(f"[MCFL] After merging singletons, total_clusters={self.num_clusters}")
+        return merged
+
     def _create_new_cluster(self, global_model=None):
         """创建新簇模型"""
         template_model = global_model if global_model is not None else self.base_model
@@ -290,9 +355,13 @@ class MCFLServer:
                         break
             self.outlier_pool.clear()  # 清空积累的孤立点
 
+        # 合并单例簇（如果有簇仅包含 1 个客户端，则把该客户端合并到最近的簇并清理空簇）
+        merged_singletons = self._merge_singleton_clusters(clients, client_cluster_vecs)
+
         self.last_dynamic_cluster_summary = {
             "outliers": len(outliers),
             "new_clusters": new_clusters_created,
+            "merged_singletons": merged_singletons,
             "total_clusters": self.num_clusters,
             "reassigned": reassigned_count,
         }
@@ -363,8 +432,16 @@ class MCFLServer:
                 avg_grads.append(stacked.sum(dim=0) / total_weight)
 
             with torch.no_grad():
-                for p, g in zip(model.parameters(), avg_grads):
-                    p -= self.outer_lr * g
+                base_params = list(self.base_model.parameters())
+                for (p, g), base_p in zip(zip(model.parameters(), avg_grads), base_params):
+                    # apply averaged meta-gradient
+                    # record reg term before updating p
+                    reg_term = None
+                    if self.global_reg and self.global_reg > 0.0:
+                        reg_term = (p - base_p.to(p.device))
+                    p.sub_(self.outer_lr * g)
+                    if reg_term is not None:
+                        p.sub_(self.outer_lr * self.global_reg * reg_term)
             sanitize_model_(model)
 
     def recluster_clients(self, clients, client_cluster_vecs, old_assignments=None):

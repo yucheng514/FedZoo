@@ -15,6 +15,7 @@ from dataset.shared_fl import has_partitioned_data, make_partitioned_tensor_clie
 from models.mcfl_models import MCFLMLPClassifier
 from servers.serverMCFL import MCFLServer
 from utils.mcfl_utils import set_seed
+from string import ascii_lowercase
 
 torch.manual_seed(0)
 
@@ -213,6 +214,7 @@ def run_mcfl(args):
         drift_severity_high=args.mcfl_drift_severity_high,
         outlier_pooling_threshold=args.mcfl_outlier_pooling_threshold,
         agglomerative_threshold=args.mcfl_agglomerative_threshold,
+        global_reg=args.mcfl_global_reg,
     )
 
     server.assign_initial_clusters(clients)
@@ -241,6 +243,11 @@ def run_mcfl(args):
         for client in clients:
             cluster_hist[client.cluster_id] += 1
 
+        # map numeric cluster ids to letters for prettier printing
+        unique_ids = sorted(cluster_hist.keys())
+        id_to_letter = {cid: ascii_lowercase[i] if i < len(ascii_lowercase) else str(cid) for i, cid in enumerate(unique_ids)}
+        cluster_hist_pretty = { (id_to_letter[cid] if cid in id_to_letter else str(cid)) : cnt for cid, cnt in cluster_hist.items() }
+
         raw_test_accs = [client.evaluate(server.cluster_models[client.cluster_id], adapt=False) for client in clients]
         adapted_test_accs = [
             client.evaluate(
@@ -259,9 +266,11 @@ def run_mcfl(args):
                 "last_dynamic_cluster_summary",
                 {"outliers": 0, "new_clusters": 0, "total_clusters": len(server.cluster_models), "reassigned": 0},
             )
+            merged_count = dynamic_summary.get('merged_singletons', 0)
             dynamic_suffix = (
                 f"outliers={dynamic_summary['outliers']} | "
                 f"new_clusters={dynamic_summary['new_clusters']} | "
+                f"merged_singletons={merged_count} | "
                 f"total_clusters={dynamic_summary['total_clusters']} | "
                 f"reassigned={dynamic_summary['reassigned']} | "
             )
@@ -275,7 +284,7 @@ def run_mcfl(args):
             f"test_acc={sum(adapted_test_accs) / len(adapted_test_accs):.4f} | "
             f"raw_test_acc={sum(raw_test_accs) / len(raw_test_accs):.4f} | "
             f"{dynamic_suffix}"
-            f"clusters={dict(cluster_hist)}"
+            f"clusters={cluster_hist_pretty}"
         )
         best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
         budget.append(time.time() - s_t)

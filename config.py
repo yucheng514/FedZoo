@@ -71,6 +71,7 @@ def build_parser():
     parser.add_argument('--mcfl_agglomerative_threshold', type=float, default=0.5, help='Distance threshold for agglomerative clustering (controls when clusters stop merging).')
     parser.add_argument('--mcfl_encoder_embed_dim', type=int, default=64)
     parser.add_argument('--mcfl_outer_lr', type=float, default=1e-3)
+    parser.add_argument('--mcfl_global_reg', type=float, default=0.0, help='Global regularization strength pulling cluster models toward the base global model.')
     parser.add_argument('--mcfl_num_workers', type=int, default=2, help='Number of DataLoader worker processes for MCFL clients.')
     parser.add_argument(
         '--mcfl_model_mix',
