@@ -16,6 +16,7 @@ class Client(object):
 
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
         torch.manual_seed(0)
+        self.args = args
         self.model = copy.deepcopy(args.model)
         self.algorithm = args.algorithm
         self.dataset = args.dataset
@@ -30,6 +31,15 @@ class Client(object):
         self.learning_rate = args.local_learning_rate
         self.local_epochs = args.local_epochs
         self.few_shot = args.few_shot
+        # Temporal drift tracking (can be driven from command-line)
+        self.current_round = 0
+        self.drift_type = getattr(args, 'drift_type', 'none')
+        self.drift_every = getattr(args, 'drift_every', 5)
+        self.drift_noise_step = getattr(args, 'drift_noise_step', 0.01)
+        self.drift_noise_max = getattr(args, 'drift_noise_max', 0.10)
+        self.drift_rotation_step = getattr(args, 'drift_rotation_step', 5.0)
+        self.drift_round = getattr(args, 'drift_round', 25)
+        self.drift_swap_clients = getattr(args, 'drift_swap_clients', '')
 
         # check BatchNorm
         self.has_BatchNorm = False
@@ -55,12 +65,48 @@ class Client(object):
         if batch_size == None:
             batch_size = self.batch_size
         train_data = read_client_data(self.dataset, self.id, is_train=True, few_shot=self.few_shot)
+        # If temporal drift requested, wrap with DriftDataset if available
+        try:
+            from utils.data_utils import DriftDataset, set_global_drift_round
+            if getattr(self.args, 'drift_type', 'none') != 'none':
+                # Build partner map only when swap spec provided at server-side; here we leave partner_map empty
+                ds = DriftDataset(
+                    train_data,
+                    client_id=self.id,
+                    drift_type=self.drift_type,
+                    drift_every=self.drift_every,
+                    noise_step=self.drift_noise_step,
+                    noise_max=self.drift_noise_max,
+                    rotation_step=self.drift_rotation_step,
+                    heavy_round=self.drift_round,
+                )
+                set_global_drift_round(self.current_round)
+                return DataLoader(ds, batch_size, drop_last=True, shuffle=True)
+        except Exception:
+            pass
         return DataLoader(train_data, batch_size, drop_last=True, shuffle=True)
 
     def load_test_data(self, batch_size=None):
         if batch_size == None:
             batch_size = self.batch_size
         test_data = read_client_data(self.dataset, self.id, is_train=False, few_shot=self.few_shot)
+        try:
+            from utils.data_utils import DriftDataset, set_global_drift_round
+            if getattr(self.args, 'drift_type', 'none') != 'none':
+                ds = DriftDataset(
+                    test_data,
+                    client_id=self.id,
+                    drift_type=self.drift_type,
+                    drift_every=self.drift_every,
+                    noise_step=self.drift_noise_step,
+                    noise_max=self.drift_noise_max,
+                    rotation_step=self.drift_rotation_step,
+                    heavy_round=self.drift_round,
+                )
+                set_global_drift_round(self.current_round)
+                return DataLoader(ds, batch_size, drop_last=False, shuffle=True)
+        except Exception:
+            pass
         return DataLoader(test_data, batch_size, drop_last=False, shuffle=True)
 
     def set_parameters(self, model):

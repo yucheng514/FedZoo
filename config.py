@@ -73,6 +73,14 @@ def build_parser():
     parser.add_argument('--mcfl_outer_lr', type=float, default=1e-3)
     parser.add_argument('--mcfl_global_reg', type=float, default=0.0, help='Global regularization strength pulling cluster models toward the base global model.')
     parser.add_argument('--mcfl_num_workers', type=int, default=2, help='Number of DataLoader worker processes for MCFL clients.')
+    # Generic temporal-drift flags (cross-algorithm)
+    parser.add_argument('--drift_type', type=str, default='none', choices=['none', 'slight', 'heavy', 'both'], help='Global temporal drift mode applied to partitioned datasets and clients.')
+    parser.add_argument('--drift_every', type=int, default=5, help='Apply one mild drift increment every N rounds (used when drift_type contains slight).')
+    parser.add_argument('--drift_noise_step', type=float, default=0.01, help='Gaussian noise std increment per mild drift step.')
+    parser.add_argument('--drift_noise_max', type=float, default=0.10, help='Maximum Gaussian noise std for mild drift.')
+    parser.add_argument('--drift_rotation_step', type=float, default=5.0, help='Rotation angle increment (degrees) per mild drift step.')
+    parser.add_argument('--drift_round', type=int, default=25, help='Round index that triggers heavy drift.')
+    parser.add_argument('--drift_swap_clients', type=str, default='', help='For heavy drift: two client id ranges to swap data (e.g. "0-4,5-9" or "0,1").')
     parser.add_argument(
         '--mcfl_model_mix',
         type=float,

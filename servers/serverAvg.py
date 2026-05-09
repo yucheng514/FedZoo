@@ -4,6 +4,7 @@ import time
 #
 from servers.serverBase import Server
 from clients.clientAvg import clientAVG
+from utils.data_utils import set_global_drift_round
 class FedAvg(Server):
     def __init__(self, args, times):
         super().__init__(args, times)
@@ -21,6 +22,8 @@ class FedAvg(Server):
 
     def train(self):
         for i in range(self.global_rounds+1):
+            # update global drift round so clients using DriftDataset will change over time
+            set_global_drift_round(i)
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()

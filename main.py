@@ -16,6 +16,7 @@ from models.mcfl_models import MCFLMLPClassifier
 from servers.serverMCFL import MCFLServer
 from utils.mcfl_utils import set_seed
 from string import ascii_lowercase
+from utils.data_utils import set_global_drift_round
 
 torch.manual_seed(0)
 
@@ -222,6 +223,13 @@ def run_mcfl(args):
 
     for rnd in range(args.global_rounds):
         print(f"Round {rnd:03d} start")
+        # Inform DriftDataset and clients of the current global round
+        set_global_drift_round(rnd)
+        for c in clients:
+            try:
+                c.current_round = rnd
+            except Exception:
+                pass
         s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.mcfl_seed + rnd)
         stats = server.train_round(
@@ -345,6 +353,7 @@ def run_cfl(args):
     acc_clients = [client.evaluate() for client in clients]
 
     for c_round in range(1, args.global_rounds + 1):
+        set_global_drift_round(c_round)
         print(f"Round {c_round:03d} start")
         if c_round == 1:
             server.synchronize_clients(clients)
