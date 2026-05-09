@@ -48,7 +48,7 @@ class clientpFedMe(Client):
     def update_parameters(model, new_params):
         """将参数列表应用到模型"""
         for param, new_param in zip(model.parameters(), new_params):
-            param.data = new_param.data.clone()
+            param.data.copy_(new_param.data)
 
     def train(self):
         """pFedMe 训练流程：K步个性化优化 + 本地参数更新"""
@@ -80,11 +80,11 @@ class clientpFedMe(Client):
                     self.optimizer.step_pfedme(self.local_params, self.device)
                     self.personalized_params = self._clone_parameters(self.model.parameters())
 
-                # 更新本地全局参数
+                # 更新本地全局参数 (使用 copy_ 原地更新，避免 .data 直接赋值引发的 CUDA 异步内存奔溃)
                 for localweight, new_param in zip(self.local_params, self.personalized_params):
-                    localweight.data = localweight.data - self.lamda * self.learning_rate * (
+                    localweight.data.copy_(localweight.data - self.lamda * self.learning_rate * (
                         localweight.data - new_param.data
-                    )
+                    ))
 
         # 保持模型参数与本地参数同步，方便下一轮服务器下发前的状态一致性
         self._load_parameters(self.model, self.local_params)
@@ -156,4 +156,3 @@ class clientpFedMe(Client):
 
         self._load_parameters(self.model, backup_params)
         return train_acc, losses, train_num
-

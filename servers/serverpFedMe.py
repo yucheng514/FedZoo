@@ -62,7 +62,7 @@ class serverpFedMe(Server):
     def beta_aggregate_parameters(self):
         """使用 beta 插值全局模型和前一轮参数"""
         for pre_param, param in zip(self.previous_global_model, self.global_model.parameters()):
-            param.data = (1 - self.beta) * pre_param.data + self.beta * param.data
+            param.data.copy_((1 - self.beta) * pre_param.data + self.beta * param.data)
 
     def test_metrics_personalized(self):
         """使用个性化参数评估测试集"""
