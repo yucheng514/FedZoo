@@ -198,6 +198,18 @@ class MCFLServer:
             similarities.append(sim)
         return similarities, cluster_ids
 
+    def _get_cluster_letter(self, cluster_id):
+        """辅助函数：将内部整数 ID 映射为日志打印的字母，保持与 main.py 输出一致"""
+        from string import ascii_lowercase
+        unique_ids = sorted(list(self.cluster_models.keys()))
+        try:
+            idx = unique_ids.index(int(cluster_id))
+            if idx < len(ascii_lowercase):
+                return ascii_lowercase[idx]
+            return str(cluster_id)
+        except ValueError:
+            return str(cluster_id)
+
     def _detect_outliers_and_drift(self, clients, client_cluster_vecs, stats_list):
         """
         孤立点检测与漂移分类：
@@ -238,7 +250,11 @@ class MCFLServer:
                 
                 if other_best_sim > current_cluster_sim and other_best_sim > self.drift_severity_high:
                     drift_candidates.append((client.client_id, other_best_cluster))
-                    print(f"[MCFL] Client {client.client_id} may benefit from switching to cluster {other_best_cluster} "
+                    
+                    # 使用字母打印
+                    old_letter = self._get_cluster_letter(current_cluster_id)
+                    new_letter = self._get_cluster_letter(other_best_cluster)
+                    print(f"[MCFL] Client {client.client_id} may benefit from switching to cluster {new_letter} "
                           f"(current sim={current_cluster_sim:.3f}, best sim={other_best_sim:.3f})")
 
         return outliers, drift_candidates
@@ -282,7 +298,10 @@ class MCFLServer:
             old = client.cluster_id
             client.cluster_id = int(best_cluster)
             merged += 1
-            print(f"[MCFL] Singleton cluster {old} merged: client {client.client_id} -> cluster {best_cluster}")
+            
+            old_letter = self._get_cluster_letter(old)
+            best_letter = self._get_cluster_letter(best_cluster)
+            print(f"[MCFL] Singleton cluster {old_letter} merged: client {client.client_id} -> cluster {best_letter}")
 
         if merged == 0:
             return 0
@@ -306,7 +325,9 @@ class MCFLServer:
         new_id = max(self.cluster_models.keys()) + 1 if self.cluster_models else 0
         self.cluster_models[new_id] = new_cluster_model
         self.num_clusters = len(self.cluster_models)
-        print(f"[MCFL] New cluster created with ID {new_id}! Now have {self.num_clusters} clusters.")
+        
+        new_letter = self._get_cluster_letter(new_id)
+        print(f"[MCFL] New cluster created with ID {new_letter}! Now have {self.num_clusters} clusters.")
         return new_id
 
     def _handle_dynamic_clustering(self, clients, client_cluster_vecs, stats_list, global_model):
@@ -335,7 +356,10 @@ class MCFLServer:
                     old_cluster = client.cluster_id
                     client.cluster_id = new_cluster_id
                     reassigned_count += 1
-                    print(f"[MCFL] Client {client_id} reassigned from cluster {old_cluster} to {new_cluster_id}")
+                    
+                    old_letter = self._get_cluster_letter(old_cluster)
+                    new_letter = self._get_cluster_letter(new_cluster_id)
+                    print(f"[MCFL] Client {client_id} reassigned from cluster {old_letter} to {new_letter}")
                     break
 
         # 积累孤立点
