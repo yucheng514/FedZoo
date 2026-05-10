@@ -303,7 +303,7 @@ def run_mcfl(args):
         )
         best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
         budget.append(time.time() - s_t)
-        print('-' * 25, 'time cost', '-' * 25, f"{budget[-1]:.2f}")
+        print(f"time cost:{budget[-1]:.2f}")
         print(f"Round {rnd:03d} end")
 
     if budget:
@@ -526,7 +526,7 @@ def run_ifca(args):
     else:
         print(f"Round -01 | test_acc={initial['test_acc']:.4f}")
     initial_time = time.time() - initial_s_t
-    print('-' * 25, 'time cost', '-' * 25, f"{initial_time:.2f}")
+    print(f"time cost:{initial_time:.2f}")
     budget.append(initial_time)
     best_test_acc = initial["test_acc"] if task != "regression" else float("-inf")
 
@@ -551,7 +551,7 @@ def run_ifca(args):
         if task != "regression":
             best_test_acc = max(best_test_acc, eval_stats["test_acc"])
         budget.append(time.time() - s_t)
-        print('-' * 25, 'time cost', '-' * 25, f"{budget[-1]:.2f}")
+        print(f"time cost:{budget[-1]:.2f}")
         print(f"Round {rnd:03d} end")
 
     if budget:

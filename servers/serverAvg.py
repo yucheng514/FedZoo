@@ -51,7 +51,7 @@ class FedAvg(Server):
             self.aggregate_parameters()
 
             self.Budget.append(time.time() - s_t)
-            print('-'*25, 'time cost', '-'*25, f"{self.Budget[-1]:.2f}")
+            print(f"time cost: {self.Budget[-1]:.2f}")
 
             if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc], top_cnt=self.top_cnt):
                 break
