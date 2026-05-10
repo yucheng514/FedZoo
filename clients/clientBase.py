@@ -38,7 +38,7 @@ class Client(object):
         self.drift_noise_step = getattr(args, 'drift_noise_step', 0.01)
         self.drift_noise_max = getattr(args, 'drift_noise_max', 0.10)
         self.drift_rotation_step = getattr(args, 'drift_rotation_step', 5.0)
-        self.drift_round = getattr(args, 'drift_round', 25)
+        self.drift_interval = getattr(args, 'drift_interval', 25)
         self.drift_swap_clients = getattr(args, 'drift_swap_clients', '')
 
         # check BatchNorm
@@ -78,7 +78,7 @@ class Client(object):
                     noise_step=self.drift_noise_step,
                     noise_max=self.drift_noise_max,
                     rotation_step=self.drift_rotation_step,
-                    heavy_round=self.drift_round,
+                    drift_interval=self.drift_interval,
                 )
                 set_global_drift_round(self.current_round)
                 return DataLoader(ds, batch_size, drop_last=True, shuffle=True)
@@ -101,7 +101,7 @@ class Client(object):
                     noise_step=self.drift_noise_step,
                     noise_max=self.drift_noise_max,
                     rotation_step=self.drift_rotation_step,
-                    heavy_round=self.drift_round,
+                    drift_interval=self.drift_interval,
                 )
                 set_global_drift_round(self.current_round)
                 return DataLoader(ds, batch_size, drop_last=False, shuffle=True)

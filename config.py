@@ -83,7 +83,7 @@ def build_parser():
     parser.add_argument('--drift_noise_step', type=float, default=0.01, help='Gaussian noise std increment per mild drift step.')
     parser.add_argument('--drift_noise_max', type=float, default=0.10, help='Maximum Gaussian noise std for mild drift.')
     parser.add_argument('--drift_rotation_step', type=float, default=5.0, help='Rotation angle increment (degrees) per mild drift step.')
-    parser.add_argument('--drift_round', type=int, default=25, help='Round index that triggers heavy drift.')
+    parser.add_argument('--drift_interval', type=int, default=25, help='Round interval to toggle heavy drift.')
     parser.add_argument('--drift_swap_clients', type=str, default='', help='For heavy drift: two client id ranges to swap data (e.g. "0-4,5-9" or "0,1").')
     parser.add_argument(
         '--mcfl_model_mix',

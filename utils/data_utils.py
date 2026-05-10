@@ -82,8 +82,7 @@ class DriftDataset(torch.utils.data.Dataset):
     """Wraps a dataset (list of (x,y) or TensorDataset) and applies temporal drift.
 
     Mild drift: progressively add Gaussian noise or rotate images based on GLOBAL_DRIFT_ROUND.
-    Heavy drift: after a trigger round, optionally swap samples from a partner client dataset (via partner_data)
-    or apply a label remapping.
+    Heavy drift: toggle swapping samples from a partner client dataset based on drift_interval.
     """
 
     def __init__(
@@ -95,7 +94,7 @@ class DriftDataset(torch.utils.data.Dataset):
         noise_step=0.01,
         noise_max=0.10,
         rotation_step=5.0,
-        heavy_round=25,
+        drift_interval=25,
         partner_map=None,
         all_client_data=None,
     ):
@@ -108,7 +107,7 @@ class DriftDataset(torch.utils.data.Dataset):
         self.noise_step = float(noise_step)
         self.noise_max = float(noise_max)
         self.rotation_step = float(rotation_step)
-        self.heavy_round = int(heavy_round)
+        self.drift_interval = int(drift_interval)
         # partner_map: dict mapping client_id -> partner_client_id for swapping samples
         self.partner_map = dict(partner_map) if partner_map else {}
         # all_client_data: list of original datasets for swapping
@@ -167,11 +166,13 @@ class DriftDataset(torch.utils.data.Dataset):
             # TensorDataset returns a tuple
             x, y = raw[0], raw[1]
 
-        # Heavy drift: after trigger round, optionally swap with partner dataset
-        if self.drift_type in ('heavy', 'both') and GLOBAL_DRIFT_ROUND >= self.heavy_round:
-            partner_sample = self._get_from_partner(idx)
-            if partner_sample is not None:
-                x, y = partner_sample[0], partner_sample[1]
+        # Heavy drift: toggle swap with partner dataset every drift_interval rounds
+        if self.drift_type in ('heavy', 'both') and self.drift_interval > 0:
+            # e.g., if drift_interval=50: rounds 50-99 swapped, 150-199 swapped
+            if (GLOBAL_DRIFT_ROUND // self.drift_interval) % 2 == 1:
+                partner_sample = self._get_from_partner(idx)
+                if partner_sample is not None:
+                    x, y = partner_sample[0], partner_sample[1]
 
         # Mild drift: apply to image tensors
         if self.drift_type in ('slight', 'both'):
@@ -182,5 +183,3 @@ class DriftDataset(torch.utils.data.Dataset):
                 pass
 
         return x, y
-
-

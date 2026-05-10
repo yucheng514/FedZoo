@@ -225,6 +225,12 @@ def run_mcfl(args):
         print(f"Round {rnd:03d} start")
         # Inform DriftDataset and clients of the current global round
         set_global_drift_round(rnd)
+        
+        drift_interval = getattr(args, 'drift_interval', 25)
+        if getattr(args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+            if rnd > 0 and rnd % drift_interval == 0:
+                print(f"Round {rnd}: Triggering Heavy Concept Drift!")
+                
         for c in clients:
             try:
                 c.current_round = rnd
@@ -361,6 +367,12 @@ def run_cfl(args):
 
     for c_round in range(1, args.global_rounds + 1):
         set_global_drift_round(c_round)
+        
+        drift_interval = getattr(args, 'drift_interval', 25)
+        if getattr(args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+            if c_round > 0 and c_round % drift_interval == 0:
+                print(f"Round {c_round}: Triggering Heavy Concept Drift!")
+                
         print(f"Round {c_round:03d} start")
         if c_round == 1:
             server.synchronize_clients(clients)

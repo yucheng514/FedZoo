@@ -115,7 +115,7 @@ def make_partitioned_tensor_clients(args, flatten=False):
                         noise_step=getattr(args, 'drift_noise_step', 0.01),
                         noise_max=getattr(args, 'drift_noise_max', 0.10),
                         rotation_step=getattr(args, 'drift_rotation_step', 5.0),
-                        heavy_round=getattr(args, 'drift_round', 25),
+                        drift_interval=getattr(args, 'drift_interval', 25),
                         partner_map=partner_map,
                         all_client_data=all_train_ds,
                     )

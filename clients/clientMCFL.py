@@ -31,6 +31,7 @@ class MCFLClient:
         self.device = device
         self.local_epochs = local_epochs
         self.cluster_id = 0
+        self.current_round = 0
 
     def compute_dynamic_inner_epochs(self):
         """
@@ -61,6 +62,12 @@ class MCFLClient:
             raise TypeError(f"MCFL {phase} labels must be torch.long, got {y.dtype} in batch {batch_idx}.")
         if not torch.isfinite(x).all():
             raise ValueError(f"MCFL {phase} inputs contain non-finite values in batch {batch_idx}.")
+
+        # We actually implemented heavy drift via DriftDataset inside `load_train_data()` in `clientBase.py`.
+        # However, `MCFLClient` uses `support_loader` and `query_loader` which are created in `mcfl_synthetic.py`
+        # and ALREADY wrapped in `DriftDataset`!
+        # Wait, let's check `mcfl_synthetic.py` to see if it wraps in `DriftDataset`.
+
         return x.to(self.device), y.to(self.device)
 
     def _check_logits_and_labels(self, logits, targets, phase, batch_idx):
