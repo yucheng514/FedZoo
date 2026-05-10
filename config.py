@@ -68,9 +68,9 @@ def build_parser():
     parser.add_argument('--mcfl_disable_dynamic_clustering', action='store_false', dest='mcfl_enable_dynamic_clustering', help='Disable dynamic cluster growth based on client drift detection.')
     parser.add_argument('--mcfl_enable_dynamic_clustering', action='store_true', dest='mcfl_enable_dynamic_clustering', default=True, help='Enable dynamic cluster growth based on client drift detection.')
     
-    parser.add_argument('--mcfl_outlier_threshold', type=float, default=0.2, help='Similarity threshold below which a client is considered an outlier.')
+    parser.add_argument('--mcfl_outlier_threshold', type=float, default=0.1, help='Similarity threshold below which a client is considered an outlier.')
     parser.add_argument('--mcfl_drift_severity_low', type=float, default=0.5, help='Similarity threshold for light drift (client may be assigned to another existing cluster).')
-    parser.add_argument('--mcfl_drift_severity_high', type=float, default=0.2, help='Similarity threshold for severe drift (candidate for new cluster if outliers accumulate).')
+    parser.add_argument('--mcfl_drift_severity_high', type=float, default=0.4, help='Similarity threshold for severe drift (candidate for new cluster if outliers accumulate).')
     parser.add_argument('--mcfl_outlier_pooling_threshold', type=int, default=3, help='Number of outliers accumulated to trigger new cluster creation.')
     parser.add_argument('--mcfl_agglomerative_threshold', type=float, default=0.5, help='Distance threshold for agglomerative clustering (controls when clusters stop merging).')
     parser.add_argument('--mcfl_encoder_embed_dim', type=int, default=64)
@@ -135,7 +135,7 @@ def build_parser():
     parser.add_argument(
         '--mcfl_cluster_method',
         type=str,
-        default='kmeans',
+        default='agglomerative',
         choices=['kmeans', 'agglomerative'],
         help='Clustering algorithm used by MCFL during reclustering.',
     )
