@@ -247,14 +247,18 @@ def run_mcfl(args):
         support_acc = sum(s["support_correct"] for s in stats) / max(total_support_samples, 1)
         query_acc = sum(s["query_correct"] for s in stats) / max(total_query_samples, 1)
 
-        cluster_hist = defaultdict(int)
+        cluster_clients = defaultdict(list)
         for client in clients:
-            cluster_hist[client.cluster_id] += 1
+            cluster_clients[client.cluster_id].append(client.client_id)
 
         # map numeric cluster ids to letters for prettier printing
-        unique_ids = sorted(cluster_hist.keys())
+        unique_ids = sorted(cluster_clients.keys())
         id_to_letter = {cid: ascii_lowercase[i] if i < len(ascii_lowercase) else str(cid) for i, cid in enumerate(unique_ids)}
-        cluster_hist_pretty = { (id_to_letter[cid] if cid in id_to_letter else str(cid)) : cnt for cid, cnt in cluster_hist.items() }
+        
+        cluster_hist_pretty = {}
+        for cid, client_list in cluster_clients.items():
+            letter = id_to_letter.get(cid, str(cid))
+            cluster_hist_pretty[letter] = f"{sorted(client_list)} (count: {len(client_list)})"
 
         raw_test_accs = [client.evaluate(server.cluster_models[client.cluster_id], adapt=False) for client in clients]
         adapted_test_accs = [
