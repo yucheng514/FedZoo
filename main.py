@@ -633,6 +633,11 @@ if __name__ == "__main__":
     total_start = time.time()
     args = get_args()
     resolve_device(args)
+    
+    if not args.log_file:
+        now_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        args.log_file = f"logs/{args.algorithm}_{now_str}.log"
+
     with maybe_log_to_file(args.log_file, append=args.log_append):
         print_experiment_start_time()
         print_python_command()
