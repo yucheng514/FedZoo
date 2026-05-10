@@ -222,7 +222,7 @@ def run_mcfl(args):
     best_test_acc = float("-inf")
 
     for rnd in range(args.global_rounds):
-        print(f"Round {rnd:03d} start")
+        print(f"==================== Round {rnd:03d} start ====================")
         # Inform DriftDataset and clients of the current global round
         set_global_drift_round(rnd)
         
@@ -257,9 +257,9 @@ def run_mcfl(args):
         for client in clients:
             cluster_clients[client.cluster_id].append(client.client_id)
 
-        # map numeric cluster ids to letters for prettier printing
+        # map numeric cluster ids to letters absolutely to match log printing logic
         unique_ids = sorted(cluster_clients.keys())
-        id_to_letter = {cid: ascii_lowercase[i] if i < len(ascii_lowercase) else str(cid) for i, cid in enumerate(unique_ids)}
+        id_to_letter = {cid: ascii_lowercase[cid] if cid < len(ascii_lowercase) else str(cid) for cid in unique_ids}
         
         cluster_hist_pretty = {}
         for cid, client_list in cluster_clients.items():
@@ -310,7 +310,7 @@ def run_mcfl(args):
         best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
         budget.append(time.time() - s_t)
         print(f"time cost:{budget[-1]:.2f}")
-        print(f"Round {rnd:03d} end")
+        print(f"==================== Round {rnd:03d} end ====================")
 
     if budget:
         print("\nBest accuracy.")
@@ -373,7 +373,7 @@ def run_cfl(args):
             if c_round > 0 and c_round % drift_interval == 0:
                 print(f"Round {c_round}: Triggering Heavy Concept Drift!")
                 
-        print(f"Round {c_round:03d} start")
+        print(f"==================== Round {c_round:03d} start ====================")
         if c_round == 1:
             server.synchronize_clients(clients)
 
@@ -429,7 +429,7 @@ def run_cfl(args):
             f"clusters={cluster_hist}"
         )
 
-        print(f"Round {c_round:03d} end")
+        print(f"==================== Round {c_round:03d} end ====================")
 
         if args.cfl_plot_every and c_round % args.cfl_plot_every == 0:
             display_train_stats(cfl_stats, args.cfl_eps_1, args.cfl_eps_2, args.global_rounds)
@@ -543,7 +543,7 @@ def run_ifca(args):
     best_test_acc = initial["test_acc"] if task != "regression" else float("-inf")
 
     for rnd in range(args.global_rounds):
-        print(f"Round {rnd:03d} start")
+        print(f"==================== Round {rnd:03d} start ====================")
         s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.ifca_seed + rnd)
         server.train_round(lr=args.local_learning_rate, local_epochs=args.ifca_tau, clients=participating_clients)
@@ -564,7 +564,7 @@ def run_ifca(args):
             best_test_acc = max(best_test_acc, eval_stats["test_acc"])
         budget.append(time.time() - s_t)
         print(f"time cost:{budget[-1]:.2f}")
-        print(f"Round {rnd:03d} end")
+        print(f"==================== Round {rnd:03d} end ====================")
 
     if budget:
         print("\nBest accuracy.")

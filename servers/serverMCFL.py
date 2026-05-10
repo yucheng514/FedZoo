@@ -199,14 +199,13 @@ class MCFLServer:
         return similarities, cluster_ids
 
     def _get_cluster_letter(self, cluster_id):
-        """辅助函数：将内部整数 ID 映射为日志打印的字母，保持与 main.py 输出一致"""
+        """辅助函数：将内部整数 ID 绝对映射为日志打印的字母，保持与 main.py 输出一致"""
         from string import ascii_lowercase
-        unique_ids = sorted(list(self.cluster_models.keys()))
         try:
-            idx = unique_ids.index(int(cluster_id))
-            if idx < len(ascii_lowercase):
-                return ascii_lowercase[idx]
-            return str(cluster_id)
+            cid = int(cluster_id)
+            if cid < len(ascii_lowercase):
+                return ascii_lowercase[cid]
+            return str(cid)
         except ValueError:
             return str(cluster_id)
 
