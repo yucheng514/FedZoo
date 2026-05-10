@@ -517,7 +517,6 @@ class MCFLServer:
                     first_order=first_order,
                     local_epochs=dynamic_epochs,  # ← 使用动态轮数
                     algorithm=self.algorithm,  # ← 传递算法参数
-                    round_idx=round_idx, # ← 传递当前轮数
                 )
             except Exception as exc:
                 raise RuntimeError(
