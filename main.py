@@ -260,6 +260,9 @@ def run_mcfl(args):
             letter = id_to_letter.get(cid, str(cid))
             cluster_hist_pretty[letter] = f"{sorted(client_list)} (count: {len(client_list)})"
 
+        # 针对字母顺序进行排序，使得打印更加清晰
+        cluster_hist_pretty = dict(sorted(cluster_hist_pretty.items()))
+
         raw_test_accs = [client.evaluate(server.cluster_models[client.cluster_id], adapt=False) for client in clients]
         adapted_test_accs = [
             client.evaluate(
