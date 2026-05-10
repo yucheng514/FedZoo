@@ -151,11 +151,17 @@ def _cosine_distance_matrix(points):
     return distance
 
 
-def _agglomerative_numpy(points, num_clusters):
+def _agglomerative_numpy(points, num_clusters=None, distance_threshold=None):
     distance = _cosine_distance_matrix(points)
     clusters = [[idx] for idx in range(len(points))]
 
-    while len(clusters) > num_clusters:
+    while True:
+        if num_clusters is not None and len(clusters) <= num_clusters:
+            break
+            
+        if len(clusters) <= 1:
+            break
+
         best_i, best_j = 0, 1
         best_score = float("inf")
 
@@ -167,6 +173,13 @@ def _agglomerative_numpy(points, num_clusters):
                     best_score = score
                     best_i, best_j = i, j
 
+        if distance_threshold is not None and best_score > distance_threshold:
+            if num_clusters is None or len(clusters) <= num_clusters:
+                break
+
+        if best_score == float("inf"):
+            break
+
         clusters[best_i].extend(clusters[best_j])
         del clusters[best_j]
 
@@ -176,14 +189,18 @@ def _agglomerative_numpy(points, num_clusters):
     return labels
 
 
-def agglomerative_cluster(embeddings, num_clusters):
+def agglomerative_cluster(embeddings, num_clusters=None, distance_threshold=None):
     points, n_points = _sanitize_points(embeddings)
 
     if n_points == 0:
         return np.array([], dtype=np.int64)
-    if n_points < num_clusters:
+        
+    if num_clusters is not None and n_points < num_clusters:
         return np.arange(n_points) % num_clusters
+        
     if np.allclose(points, points[0], atol=1e-8, rtol=1e-5):
+        if num_clusters is None or num_clusters >= 1:
+            return np.zeros(n_points, dtype=np.int64)
         return np.arange(n_points) % num_clusters
 
     distance = _cosine_distance_matrix(points)
@@ -192,18 +209,20 @@ def agglomerative_cluster(embeddings, num_clusters):
         try:
             clustering = AgglomerativeClustering(
                 n_clusters=num_clusters,
+                distance_threshold=distance_threshold,
                 metric="precomputed",
                 linkage="average",
             )
         except TypeError:
             clustering = AgglomerativeClustering(
                 n_clusters=num_clusters,
+                distance_threshold=distance_threshold,
                 affinity="precomputed",
                 linkage="average",
             )
         return clustering.fit_predict(distance)
 
-    return _agglomerative_numpy(points, num_clusters=num_clusters)
+    return _agglomerative_numpy(points, num_clusters=num_clusters, distance_threshold=distance_threshold)
 
 
 def align_clusters(old_labels, new_labels):
