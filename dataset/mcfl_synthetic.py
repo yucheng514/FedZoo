@@ -104,6 +104,7 @@ def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed, num_wo
         drop_last=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
     )
     query_loader = DataLoader(
         query_dataset,
@@ -112,6 +113,7 @@ def _build_loaders_from_dataset(dataset, batch_size, support_ratio, seed, num_wo
         drop_last=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
     )
     return support_loader, query_loader
 
@@ -154,7 +156,15 @@ def _make_real_clients(args):
             dataset_name=dataset_name,
             label_to_index=label_to_index,
         )
-        test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=getattr(args, 'mcfl_num_workers', 0),
+            pin_memory=(getattr(args, 'mcfl_client_device_resolved', args.device) == 'cuda'),
+            persistent_workers=(getattr(args, 'mcfl_num_workers', 0) > 0),
+        )
 
         clients.append(
             MCFLClient(
