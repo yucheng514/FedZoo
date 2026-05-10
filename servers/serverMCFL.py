@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from models.mcfl_models import MCFLClientEncoder
-from utils.mcfl_clustering import agglomerative_cluster, kmeans_cluster
+from utils.mcfl_clustering import agglomerative_cluster, kmeans_cluster, align_clusters
 from utils.mcfl_utils import count_parameters, sanitize_model_
 
 
@@ -469,6 +469,10 @@ class MCFLServer:
                 device=self.device,
             )
 
+        # 改进 4: 对齐簇标签，避免因为 K-Means 的标签随机置换导致打印出来的 a/b/c/d 标识来回横跳
+        if old_assignments is not None:
+            assignments = align_clusters(old_assignments, assignments)
+
         # 改进 3: 检查新聚类是否应该应用
         if old_assignments is not None and not self.should_apply_new_clustering(old_assignments, assignments):
             return  # 不应用新聚类
@@ -499,6 +503,7 @@ class MCFLServer:
                     first_order=first_order,
                     local_epochs=dynamic_epochs,  # ← 使用动态轮数
                     algorithm=self.algorithm,  # ← 传递算法参数
+                    round_idx=round_idx, # ← 传递当前轮数
                 )
             except Exception as exc:
                 raise RuntimeError(

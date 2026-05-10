@@ -204,3 +204,66 @@ def agglomerative_cluster(embeddings, num_clusters):
         return clustering.fit_predict(distance)
 
     return _agglomerative_numpy(points, num_clusters=num_clusters)
+
+
+def align_clusters(old_labels, new_labels):
+    """Aligns new cluster labels to best match the old cluster labels.
+    
+    Args:
+        old_labels: list or array of old cluster assignments
+        new_labels: list or array of new cluster assignments
+        
+    Returns:
+        A list of aligned new cluster assignments
+    """
+    if old_labels is None or len(old_labels) == 0:
+        return new_labels
+        
+    old_labels = np.asarray(old_labels)
+    new_labels = np.asarray(new_labels)
+    
+    unique_new = np.unique(new_labels)
+    unique_old = np.unique(old_labels)
+    
+    # Cost matrix: overlap between new cluster i and old cluster j
+    # We want to maximize overlap, which is equivalent to minimizing negative overlap.
+    cost_matrix = np.zeros((len(unique_new), len(unique_old)))
+    
+    for i, n_label in enumerate(unique_new):
+        for j, o_label in enumerate(unique_old):
+            overlap = np.sum((new_labels == n_label) & (old_labels == o_label))
+            cost_matrix[i, j] = -overlap
+            
+    try:
+        from scipy.optimize import linear_sum_assignment
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    except ImportError:
+        # Fallback to greedy assignment if scipy is not available
+        row_ind, col_ind = [], []
+        cost_copy = cost_matrix.copy()
+        for _ in range(min(len(unique_new), len(unique_old))):
+            r, c = np.unravel_index(cost_copy.argmin(), cost_copy.shape)
+            if cost_copy[r, c] == 0:
+                break # no more overlap
+            row_ind.append(r)
+            col_ind.append(c)
+            cost_copy[r, :] = float('inf')
+            cost_copy[:, c] = float('inf')
+            
+    mapping = {}
+    for r, c in zip(row_ind, col_ind):
+        mapping[unique_new[r]] = unique_old[c]
+        
+    # Map any unassigned new clusters to available old labels, or keep original if none available
+    used_old_labels = set(mapping.values())
+    available_old_labels = list(set(unique_old) - used_old_labels)
+    
+    for n_label in unique_new:
+        if n_label not in mapping:
+            if available_old_labels:
+                mapping[n_label] = available_old_labels.pop(0)
+            else:
+                mapping[n_label] = n_label
+                
+    aligned_labels = np.array([mapping[l] for l in new_labels])
+    return aligned_labels
