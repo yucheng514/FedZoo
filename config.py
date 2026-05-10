@@ -63,8 +63,12 @@ def build_parser():
     parser.add_argument('--mcfl_hidden_dim', type=int, default=256, help='Used by the synthetic fallback benchmark.')
     parser.add_argument('--mcfl_num_clusters', type=int, default=4, help='[DEPRECATED] Use --mcfl_initial_clusters instead. This is kept for backward compatibility.')
     parser.add_argument('--mcfl_initial_clusters', type=int, default=None, help='Initial number of clusters (will use --mcfl_num_clusters if not specified). Set to -1 to enable dynamic clustering.')
-    parser.add_argument('--mcfl_enable_dynamic_clustering', action='store_true', default=False, help='Enable dynamic cluster growth based on client drift detection.')
-    parser.add_argument('--mcfl_outlier_threshold', type=float, default=0.3, help='Similarity threshold below which a client is considered an outlier.')
+    
+    # Use dest to map both disable/enable flags to the same boolean property
+    parser.add_argument('--mcfl_disable_dynamic_clustering', action='store_false', dest='mcfl_enable_dynamic_clustering', help='Disable dynamic cluster growth based on client drift detection.')
+    parser.add_argument('--mcfl_enable_dynamic_clustering', action='store_true', dest='mcfl_enable_dynamic_clustering', default=True, help='Enable dynamic cluster growth based on client drift detection.')
+    
+    parser.add_argument('--mcfl_outlier_threshold', type=float, default=0.2, help='Similarity threshold below which a client is considered an outlier.')
     parser.add_argument('--mcfl_drift_severity_low', type=float, default=0.5, help='Similarity threshold for light drift (client may be assigned to another existing cluster).')
     parser.add_argument('--mcfl_drift_severity_high', type=float, default=0.2, help='Similarity threshold for severe drift (candidate for new cluster if outliers accumulate).')
     parser.add_argument('--mcfl_outlier_pooling_threshold', type=int, default=3, help='Number of outliers accumulated to trigger new cluster creation.')
