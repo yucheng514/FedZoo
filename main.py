@@ -8,6 +8,7 @@ import sys
 
 import numpy as np
 import torch
+import wandb
 
 from config import get_args, resolve_device
 from dataset.mcfl_synthetic import make_mcfl_clients
@@ -296,18 +297,32 @@ def run_mcfl(args):
                 f"reassigned={dynamic_summary['reassigned']} | "
             )
 
+        mean_adapted_test_acc = sum(adapted_test_accs) / len(adapted_test_accs)
+        mean_raw_test_acc = sum(raw_test_accs) / len(raw_test_accs)
+
+        if getattr(args, 'wandb', False):
+            wandb.log({
+                "round": rnd,
+                "test_acc": mean_adapted_test_acc,
+                "raw_test_acc": mean_raw_test_acc,
+                "support_loss": avg_support,
+                "query_loss": avg_query,
+                "support_acc": support_acc,
+                "query_acc": query_acc,
+            })
+
         print(
             f"Round {rnd:03d} | "
             f"support_loss={avg_support:.4f} | "
             f"query_loss={avg_query:.4f} | "
             f"support_acc={support_acc:.4f} | "
             f"query_acc={query_acc:.4f} | "
-            f"test_acc={sum(adapted_test_accs) / len(adapted_test_accs):.4f} | "
-            f"raw_test_acc={sum(raw_test_accs) / len(raw_test_accs):.4f} | "
+            f"test_acc={mean_adapted_test_acc:.4f} | "
+            f"raw_test_acc={mean_raw_test_acc:.4f} | "
             f"{dynamic_suffix}"
             f"clusters={cluster_hist_pretty}"
         )
-        best_test_acc = max(best_test_acc, sum(adapted_test_accs) / len(adapted_test_accs))
+        best_test_acc = max(best_test_acc, mean_adapted_test_acc)
         budget.append(time.time() - s_t)
         print(f"time cost:{budget[-1]:.2f}")
         print(f"==================== Round {rnd:03d} end ====================")
@@ -420,10 +435,20 @@ def run_cfl(args):
             }
         )
 
+        mean_acc = np.mean(acc_clients)
+        if getattr(args, 'wandb', False):
+            wandb.log({
+                "round": c_round,
+                "test_acc": mean_acc,
+                "mean_norm": last_mean_norm,
+                "max_norm": last_max_norm,
+                "num_clusters": len(cluster_indices),
+            })
+
         cluster_hist = {i: len(idcs) for i, idcs in enumerate(cluster_indices)}
         print(
             f"Round {c_round:03d} | "
-            f"acc_mean={np.mean(acc_clients):.4f} | "
+            f"acc_mean={mean_acc:.4f} | "
             f"mean_norm={last_mean_norm:.4f} | "
             f"max_norm={last_max_norm:.4f} | "
             f"clusters={cluster_hist}"
@@ -542,6 +567,12 @@ def run_ifca(args):
     budget.append(initial_time)
     best_test_acc = initial["test_acc"] if task != "regression" else float("-inf")
 
+    if getattr(args, 'wandb', False):
+        if task == "regression":
+            wandb.log({"round": -1, "test_mse": initial['test_mse'], "train_loss": initial['train_loss']})
+        else:
+            wandb.log({"round": -1, "test_acc": initial['test_acc'], "train_loss": initial['train_loss']})
+
     for rnd in range(args.global_rounds):
         print(f"==================== Round {rnd:03d} start ====================")
         s_t = time.time()
@@ -560,6 +591,13 @@ def run_ifca(args):
         else:
             line += f" | test_acc={eval_stats['test_acc']:.4f}"
         print(line)
+
+        if getattr(args, 'wandb', False):
+            if task == "regression":
+                wandb.log({"round": rnd, "test_mse": eval_stats['test_mse'], "train_loss": eval_stats['train_loss']})
+            else:
+                wandb.log({"round": rnd, "test_acc": eval_stats['test_acc'], "train_loss": eval_stats['train_loss']})
+
         if task != "regression":
             best_test_acc = max(best_test_acc, eval_stats["test_acc"])
         budget.append(time.time() - s_t)
@@ -629,7 +667,36 @@ def run_pfedme(args):
         time_list.append(time.time() - start)
 
 
+def run_server_base(server_cls, args):
+    """Fallback runner for server_cls that inherits from ServerBase (like FedAvg)"""
+    from models.models import FedAvgCNN
+
+    time_list = []
+    model_str = args.model
+    dataset_name = args.dataset.upper()
+
+    for i in range(0, 1):
+        print("Creating server and clients ...")
+        start = time.time()
+        if model_str == "CNN":
+            if dataset_name in {"MNIST", "EMNIST", "FEMNIST"}:
+                args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
+            elif dataset_name == "CIFAR10":
+                args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
+
+        server = server_cls(args, i)
+        server.train()
+        time_list.append(time.time() - start)
+
+
 def run(args):
+    if getattr(args, 'wandb', False):
+        wandb.init(
+            project="FedZoo",
+            name=f"{args.algorithm}_{args.dataset}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            config=vars(args)
+        )
+
     if args.algorithm == "CFL":
         run_cfl(args)
     elif args.algorithm == "MCFL":
@@ -642,6 +709,9 @@ def run(args):
         run_pfedme(args)
     else: #fedavg
         run_fedavg(args)
+        
+    if getattr(args, 'wandb', False):
+        wandb.finish()
 
 
 if __name__ == "__main__":

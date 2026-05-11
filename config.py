@@ -24,6 +24,7 @@ def build_parser():
     parser.add_argument('--print_args', action='store_true', help='Print the full parsed argument list at startup.')
     parser.add_argument('--eval_new_clients', action='store_true', help='Enable post-training fine-tuning/evaluation on held-out clients for FedAvg')
     parser.add_argument('--fine_tuning_epoch_new', type=int, default=5, help='Local fine-tuning epochs for held-out FedAvg clients')
+    parser.add_argument('--wandb', action='store_true', help='Enable weights and biases logging')
 
     # Per-FedAvg and pFedMe specific arguments
     parser.add_argument('--beta', type=float, default=0.5, help='Personalized/global interpolation factor for pFedMe')

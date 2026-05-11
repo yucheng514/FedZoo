@@ -1,6 +1,7 @@
 import copy
 import time
 import numpy as np
+import wandb
 from servers.serverBase import Server
 from clients.clientPerFedAvg import clientPerFedAvg
 
@@ -28,7 +29,7 @@ class serverPerFedAvg(Server):
             if i % self.eval_gap == 0:
                 print(f"\n-------------Round number: {i}-------------")
                 print("\nEvaluate global model with one step update")
-                self.evaluate_one_step()
+                self.evaluate_one_step(round_idx=i)
 
             # 每个客户端训练两次
             for client in self.selected_clients:
@@ -52,7 +53,7 @@ class serverPerFedAvg(Server):
         self.save_results()
         self.save_global_model()
 
-    def evaluate_one_step(self, acc=None, loss=None):
+    def evaluate_one_step(self, acc=None, loss=None, round_idx=None):
         """使用一步本地优化来评估模型"""
         # 保存所有客户端当前模型
         models_temp = []
@@ -83,6 +84,13 @@ class serverPerFedAvg(Server):
             self.rs_train_loss.append(train_loss)
         else:
             loss.append(train_loss)
+
+        if getattr(self.args, 'wandb', False) and round_idx is not None:
+            wandb.log({
+                "round": round_idx,
+                "test_acc": test_acc,
+                "train_loss": train_loss
+            })
 
         print("Averaged Train Loss: {:.4f}".format(train_loss))
         print("Averaged Test Accuracy: {:.4f}".format(test_acc))

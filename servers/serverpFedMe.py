@@ -2,6 +2,7 @@ import copy
 import time
 import numpy as np
 import h5py
+import wandb
 from pathlib import Path
 from servers.serverBase import Server
 from clients.clientpFedMe import clientpFedMe
@@ -35,7 +36,7 @@ class serverpFedMe(Server):
             if i % self.eval_gap == 0:
                 print(f"\n-------------Round number: {i}-------------")
                 print("\nEvaluate personalized model")
-                self.evaluate_personalized()
+                self.evaluate_personalized(round_idx=i)
 
             for client in self.selected_clients:
                 client.train()
@@ -46,7 +47,7 @@ class serverpFedMe(Server):
             self.beta_aggregate_parameters()
 
             self.Budget.append(time.time() - s_t)
-            print('-' * 25, 'time cost', '-' * 25, f"{self.Budget[-1]:.2f}")
+            print(f"time cost: {self.Budget[-1]:.2f}")
 
             if self.auto_break and self.check_done(acc_lss=[self.rs_test_acc_per], top_cnt=self.top_cnt):
                 break
@@ -89,7 +90,7 @@ class serverpFedMe(Server):
         ids = [c.id for c in self.clients]
         return ids, num_samples, tot_correct, losses
 
-    def evaluate_personalized(self):
+    def evaluate_personalized(self, round_idx=None):
         """评估个性化模型性能"""
         stats = self.test_metrics_personalized()
         stats_train = self.train_metrics_personalized()
@@ -101,6 +102,14 @@ class serverpFedMe(Server):
         self.rs_test_acc_per.append(test_acc)
         self.rs_train_acc_per.append(train_acc)
         self.rs_train_loss_per.append(train_loss)
+
+        if getattr(self.args, 'wandb', False) and round_idx is not None:
+            wandb.log({
+                "round": round_idx,
+                "test_acc": test_acc,
+                "train_acc": train_acc,
+                "train_loss": train_loss
+            })
 
         print("Averaged Train Loss: {:.4f}".format(train_loss))
         print("Averaged Personalized Train Accuracy: {:.4f}".format(train_acc))

@@ -1,4 +1,5 @@
 import time
+import wandb
 # from flcore.servers.serverbase import Server
 # from threading import Thread
 #
@@ -33,6 +34,12 @@ class FedAvg(Server):
                 print("\nEvaluate global model")
                 # 先评估全局模型
                 self.evaluate()
+                if getattr(self.args, 'wandb', False) and len(self.rs_test_acc) > 0:
+                    wandb.log({
+                        "round": i,
+                        "test_acc": self.rs_test_acc[-1],
+                        "train_loss": self.rs_train_loss[-1] if len(self.rs_train_loss) > 0 else 0,
+                    })
 
             for client in self.selected_clients:
                 # 再进行本地训练
