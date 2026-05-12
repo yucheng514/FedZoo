@@ -290,6 +290,8 @@ class Server(object):
         # self.print_(test_acc, train_acc, train_loss)
         print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
         print("Std Test AUC: {:.4f}".format(np.std(aucs)))
+        
+        return test_acc, train_loss, accs, aucs
 
     def print_(self, test_acc, test_auc, train_loss):
         print("Average Test Accuracy: {:.4f}".format(test_acc))

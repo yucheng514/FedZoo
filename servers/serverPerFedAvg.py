@@ -26,15 +26,38 @@ class serverPerFedAvg(Server):
     def train(self):
         """Per-FedAvg 训练循环"""
         for i in range(self.global_rounds + 1):
+            drift_interval = getattr(self.args, 'drift_interval', 25)
+            if getattr(self.args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+                if i > 0 and i % drift_interval == 0:
+                    print(f"Round {i}: Triggering Heavy Concept Drift!")
+
             set_global_drift_round(i)
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()
 
             if i % self.eval_gap == 0:
-                print(f"\n-------------Round number: {i}-------------")
+                print(f"==================== Round {i:03d} start ====================")
                 print("\nEvaluate global model with one step update")
-                self.evaluate_one_step(round_idx=i)
+                test_acc_avg, train_loss_avg, client_test_accuracies, client_train_losses = self.evaluate_one_step(round_idx=i)
+                
+                print(f"Round {i:03d} | "
+                      f"Averaged Train Loss: {train_loss_avg:.4f} | "
+                      f"Averaged Test Accuracy: {test_acc_avg:.4f} | "
+                      f"Min Client Test Accuracy: {np.min(client_test_accuracies):.4f} | "
+                      f"Max Client Test Accuracy: {np.max(client_test_accuracies):.4f} | "
+                      f"Std Client Test Accuracy: {np.std(client_test_accuracies):.4f}")
+
+                if getattr(self.args, 'wandb', False) and wandb is not None:
+                    wandb.log({
+                        "round": i,
+                        "test_acc_avg": test_acc_avg,
+                        "train_loss_avg": train_loss_avg,
+                        "client_test_acc_min": np.min(client_test_accuracies),
+                        "client_test_acc_max": np.max(client_test_accuracies),
+                        "client_test_acc_std": np.std(client_test_accuracies),
+                    })
+                print(f"==================== Round {i:03d} end ====================")
 
             # 每个客户端训练两次
             for client in self.selected_clients:
@@ -90,13 +113,4 @@ class serverPerFedAvg(Server):
         else:
             loss.append(train_loss)
 
-        if getattr(self.args, 'wandb', False) and wandb is not None and round_idx is not None:
-            wandb.log({
-                "round": round_idx,
-                "test_acc": test_acc,
-                "train_loss": train_loss
-            })
-
-        print("Averaged Train Loss: {:.4f}".format(train_loss))
-        print("Averaged Test Accuracy: {:.4f}".format(test_acc))
-        print("Std Test Accuracy: {:.4f}".format(np.std(accs)))
+        return test_acc, train_loss, accs, []

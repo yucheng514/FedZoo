@@ -9,6 +9,8 @@ except ImportError:  # pragma: no cover - optional dependency
 from servers.serverBase import Server
 from clients.clientAvg import clientAVG
 from utils.data_utils import set_global_drift_round
+import numpy as np
+
 class FedAvg(Server):
     def __init__(self, args, times):
         super().__init__(args, times)
@@ -26,6 +28,11 @@ class FedAvg(Server):
 
     def train(self):
         for i in range(self.global_rounds+1):
+            drift_interval = getattr(self.args, 'drift_interval', 25)
+            if getattr(self.args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+                if i > 0 and i % drift_interval == 0:
+                    print(f"Round {i}: Triggering Heavy Concept Drift!")
+
             # update global drift round so clients using DriftDataset will change over time
             set_global_drift_round(i)
             s_t = time.time()
@@ -33,16 +40,28 @@ class FedAvg(Server):
             self.send_models()
 
             if i%self.eval_gap == 0:
-                print(f"\n-------------Round number: {i}-------------")
+                print(f"==================== Round {i:03d} start ====================")
                 print("\nEvaluate global model")
                 # 先评估全局模型
-                self.evaluate()
-                if getattr(self.args, 'wandb', False) and wandb is not None and len(self.rs_test_acc) > 0:
+                test_acc_avg, train_loss_avg, client_test_accuracies, client_train_losses = self.evaluate()
+                
+                print(f"Round {i:03d} | "
+                      f"Averaged Train Loss: {train_loss_avg:.4f} | "
+                      f"Averaged Test Accuracy: {test_acc_avg:.4f} | "
+                      f"Min Client Test Accuracy: {np.min(client_test_accuracies):.4f} | "
+                      f"Max Client Test Accuracy: {np.max(client_test_accuracies):.4f} | "
+                      f"Std Client Test Accuracy: {np.std(client_test_accuracies):.4f}")
+
+                if getattr(self.args, 'wandb', False) and wandb is not None:
                     wandb.log({
                         "round": i,
-                        "test_acc": self.rs_test_acc[-1],
-                        "train_loss": self.rs_train_loss[-1] if len(self.rs_train_loss) > 0 else 0,
+                        "test_acc_avg": test_acc_avg,
+                        "train_loss_avg": train_loss_avg,
+                        "client_test_acc_min": np.min(client_test_accuracies),
+                        "client_test_acc_max": np.max(client_test_accuracies),
+                        "client_test_acc_std": np.std(client_test_accuracies),
                     })
+                print(f"==================== Round {i:03d} end ====================")
 
             for client in self.selected_clients:
                 # 再进行本地训练

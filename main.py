@@ -128,6 +128,14 @@ def run_fedavg(args):
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
 
         server = FedAvg(args, i)
+        
+        # Add drift triggering log for FedAvg
+        for rnd in range(args.global_rounds): # This loop is just for printing, actual training is in server.train()
+            drift_interval = getattr(args, 'drift_interval', 25)
+            if getattr(args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+                if rnd > 0 and rnd % drift_interval == 0:
+                    print(f"Round {rnd}: Triggering Heavy Concept Drift!")
+        
         server.train()
         time_list.append(time.time() - start)
 
@@ -661,6 +669,14 @@ def run_perfedavg(args):
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
 
         server = serverPerFedAvg(args, i)
+        
+        # Add drift triggering log for PerFedAvg
+        for rnd in range(args.global_rounds):
+            drift_interval = getattr(args, 'drift_interval', 25)
+            if getattr(args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+                if rnd > 0 and rnd % drift_interval == 0:
+                    print(f"Round {rnd}: Triggering Heavy Concept Drift!")
+
         server.train()
         time_list.append(time.time() - start)
 
@@ -685,6 +701,14 @@ def run_pfedme(args):
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
 
         server = serverpFedMe(args, i)
+        
+        # Add drift triggering log for pFedMe
+        for rnd in range(args.global_rounds):
+            drift_interval = getattr(args, 'drift_interval', 25)
+            if getattr(args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
+                if rnd > 0 and rnd % drift_interval == 0:
+                    print(f"Round {rnd}: Triggering Heavy Concept Drift!")
+
         server.train()
         time_list.append(time.time() - start)
 
