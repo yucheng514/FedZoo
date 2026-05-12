@@ -1,5 +1,6 @@
 import copy
 import time
+import numpy as np
 try:
     import wandb
 except ImportError:  # pragma: no cover - optional dependency
