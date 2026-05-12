@@ -78,6 +78,52 @@ def set_global_drift_round(r):
     GLOBAL_DRIFT_ROUND = int(r)
 
 
+def build_partner_map_from_swap_spec(swap_spec):
+    """Parse `drift_swap_clients` into a symmetric partner map.
+
+    Supported formats:
+      - "0-4,5-9"  -> 0..4 <-> 5..9 (cyclic if sizes differ)
+      - "0,1"      -> client 0 <-> client 1
+      - "0-3,8,9"  -> left group + right group tokens supported
+
+    Returns an empty dict when the spec is empty or invalid.
+    """
+    swap_spec = str(swap_spec or "").strip()
+    if not swap_spec:
+        return {}
+
+    def expand_group(group_text):
+        group_text = group_text.strip()
+        if not group_text:
+            return []
+        if '-' in group_text and group_text.count(',') == 0:
+            start, end = group_text.split('-', 1)
+            start, end = int(start), int(end)
+            if start <= end:
+                return list(range(start, end + 1))
+            return list(range(start, end - 1, -1))
+        return [int(token.strip()) for token in group_text.split(',') if token.strip()]
+
+    try:
+        left_text, right_text = swap_spec.split(',', 1)
+        group_a = expand_group(left_text)
+        group_b = expand_group(right_text)
+    except Exception:
+        return {}
+
+    if not group_a or not group_b:
+        return {}
+
+    partner_map = {}
+    group_a = sorted(set(int(x) for x in group_a))
+    group_b = sorted(set(int(x) for x in group_b))
+    for i, cid in enumerate(group_a):
+        partner_map[int(cid)] = int(group_b[i % len(group_b)])
+    for i, cid in enumerate(group_b):
+        partner_map[int(cid)] = int(group_a[i % len(group_a)])
+    return partner_map
+
+
 class DriftDataset(torch.utils.data.Dataset):
     """Wraps a dataset (list of (x,y) or TensorDataset) and applies temporal drift.
 
