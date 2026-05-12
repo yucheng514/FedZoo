@@ -55,8 +55,8 @@ class FedAvg(Server):
                 if getattr(self.args, 'wandb', False) and wandb is not None:
                     wandb.log({
                         "round": i,
-                        "test_acc_avg": test_acc_avg,
-                        "train_loss_avg": train_loss_avg,
+                        "test_acc": test_acc_avg,
+                        "train_loss": train_loss_avg,
                         "client_test_acc_min": np.min(client_test_accuracies),
                         "client_test_acc_max": np.max(client_test_accuracies),
                         "client_test_acc_std": np.std(client_test_accuracies),
