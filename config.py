@@ -12,6 +12,7 @@ def build_parser():
     parser.add_argument('-did', "--device_id", type=str, default="0")
     parser.add_argument('-data', "--dataset", type=str, default="MNIST")
     parser.add_argument('-ncl', "--num_classes", type=int, default=10)
+    parser.add_argument('--seed', type=int, default=1, help='Random seed for all algorithms')
     parser.add_argument('-gr', "--global_rounds", type=int, default=500)
     parser.add_argument('-nc', "--num_clients", type=int, default=20)
     parser.add_argument('-lbs', "--batch_size", type=int, default=10)
@@ -49,7 +50,7 @@ def build_parser():
     parser.add_argument('-nnc', "--num_new_clients", type=int, default=0)
 
     # MCFL-specific arguments.
-    parser.add_argument('--mcfl_seed', type=int, default=42)
+    parser.add_argument('--mcfl_seed', type=int, default=None, help='Random seed for MCFL (defaults to --seed if not specified)')
     parser.add_argument('--mcfl_backbone', type=str, default='auto', choices=['auto', 'mlp', 'cnn'])
     parser.add_argument(
         '--mcfl_client_device',
@@ -149,7 +150,7 @@ def build_parser():
     )
 
     # CFL-specific arguments.
-    parser.add_argument('--cfl_seed', type=int, default=42)
+    parser.add_argument('--cfl_seed', type=int, default=None, help='Random seed for CFL (defaults to --seed if not specified)')
     parser.add_argument('--cfl_data_root', type=str, default='dataset/data')
     parser.add_argument('--cfl_split', type=str, default='byclass')
     parser.add_argument('--cfl_dirichlet_alpha', type=float, default=1.0)
@@ -166,7 +167,7 @@ def build_parser():
     parser.add_argument('--cfl_no_download', dest='cfl_download', action='store_false')
 
     # IFCA-specific arguments.
-    parser.add_argument('--ifca_seed', type=int, default=42)
+    parser.add_argument('--ifca_seed', type=int, default=None, help='Random seed for IFCA (defaults to --seed if not specified)')
     parser.add_argument('--ifca_clusters', type=int, default=2)
     parser.add_argument('--ifca_tau', type=int, default=1, help='Local epochs per IFCA round.')
     parser.add_argument('--ifca_mode', type=str, default='clustered', choices=['clustered', 'oneshot', 'local'])
@@ -189,6 +190,13 @@ def build_parser():
 
 def get_args():
     args = build_parser().parse_args()
+    # Propagate unified --seed to algorithm-specific seeds if not explicitly set
+    if args.mcfl_seed is None:
+        args.mcfl_seed = args.seed
+    if args.cfl_seed is None:
+        args.cfl_seed = args.seed
+    if args.ifca_seed is None:
+        args.ifca_seed = args.seed
     validate_args(args)
     return args
 
@@ -196,13 +204,13 @@ def get_args():
 def validate_args(args):
     required_common = [
         "algorithm", "device", "dataset", "num_classes", "global_rounds",
-        "num_clients", "batch_size", "local_epochs", "local_learning_rate",
+        "num_clients", "batch_size", "local_epochs", "local_learning_rate", "seed",
     ]
     required_by_algo = {
         "FedAvg": ["model", "join_ratio", "eval_gap"],
-        "MCFL": ["mcfl_seed", "mcfl_backbone", "mcfl_hidden_dim", "mcfl_num_clusters"],
-        "CFL": ["cfl_seed", "cfl_split", "cfl_dirichlet_alpha", "cfl_momentum", "train_frac"],
-        "IFCA": ["ifca_seed", "ifca_clusters", "ifca_tau", "ifca_mode"],
+        "MCFL": ["mcfl_backbone", "mcfl_hidden_dim", "mcfl_num_clusters"],
+        "CFL": ["cfl_split", "cfl_dirichlet_alpha", "cfl_momentum", "train_frac"],
+        "IFCA": ["ifca_clusters", "ifca_tau", "ifca_mode"],
         "PerFedAvg": ["model", "join_ratio", "eval_gap"],
         "PerAvg": ["model", "join_ratio", "eval_gap"],
         "pFedMe": ["model", "join_ratio", "eval_gap", "beta", "lamda", "K", "p_learning_rate"],

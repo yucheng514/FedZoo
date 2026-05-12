@@ -113,6 +113,7 @@ def run_fedavg(args):
     from models.models import FedAvgCNN
     from servers.serverAvg import FedAvg
 
+    set_seed(args.seed)
     time_list = []
     model_str = args.model
     dataset_name = args.dataset.upper()
@@ -645,6 +646,7 @@ def run_perfedavg(args):
     from models.models import FedAvgCNN
     from servers.serverPerFedAvg import serverPerFedAvg
 
+    set_seed(args.seed)
     time_list = []
     model_str = args.model
     dataset_name = args.dataset.upper()
@@ -668,6 +670,7 @@ def run_pfedme(args):
     from models.models import FedAvgCNN
     from servers.serverpFedMe import serverpFedMe
 
+    set_seed(args.seed)
     time_list = []
     model_str = args.model
     dataset_name = args.dataset.upper()
