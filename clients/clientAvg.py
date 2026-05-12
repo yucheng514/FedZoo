@@ -2,6 +2,8 @@
 # import torch
 # import numpy as np
 import time
+import warnings
+import torch
 from clients.clientBase import Client
 
 class clientAVG(Client):
@@ -30,8 +32,22 @@ class clientAVG(Client):
                 #     time.sleep(0.1 * np.abs(np.random.rand()))
                 output = self.model(x)
                 loss = self.loss(output, y)
+
+                # Check for NaN loss before backprop
+                if not torch.isfinite(loss):
+                    warnings.warn(
+                        f"Client {self.id} detected non-finite loss ({loss.item()}) at epoch {epoch}, batch {i}; skipping update.",
+                        RuntimeWarning,
+                    )
+                    self.optimizer.zero_grad()
+                    continue
+
                 self.optimizer.zero_grad()
                 loss.backward()
+
+                # Gradient clipping to prevent exploding gradients
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+
                 self.optimizer.step()
 
         # self.model.cpu()

@@ -128,11 +128,13 @@ class Client(object):
             if finite_vals.size == 0:
                 y_prob = np.zeros_like(y_prob)
             else:
+                finite_max = float(np.max(finite_vals).item())
+                finite_min = float(np.min(finite_vals).item())
                 y_prob = np.nan_to_num(
                     y_prob,
                     nan=0.0,
-                    posinf=float(np.max(finite_vals)),
-                    neginf=float(np.min(finite_vals)),
+                    posinf=finite_max,
+                    neginf=finite_min,
                 )
 
         try:
@@ -172,6 +174,14 @@ class Client(object):
                     x = x.to(self.device)
                 y = y.to(self.device)
                 output = self.model(x)
+
+                # Check for NaN/Inf in output
+                if not torch.isfinite(output).all():
+                    warnings.warn(
+                        f"Client {self.id} produced non-finite model output; replacing with zeros.",
+                        RuntimeWarning,
+                    )
+                    output = torch.where(torch.isfinite(output), output, torch.zeros_like(output))
 
                 test_acc += (torch.sum(torch.argmax(output, dim=1) == y)).item()
                 test_num += y.shape[0]
@@ -213,7 +223,15 @@ class Client(object):
                 output = self.model(x)
                 loss = self.loss(output, y)
                 train_num += y.shape[0]
-                losses += loss.item() * y.shape[0]
+                loss_item = loss.item()
+                # Check for NaN or Inf in loss
+                if not np.isfinite(loss_item):
+                    warnings.warn(
+                        f"Client {self.id} produced non-finite loss ({loss_item}); skipping this batch.",
+                        RuntimeWarning,
+                    )
+                    loss_item = 0.0
+                losses += loss_item * y.shape[0]
 
         # self.model.cpu()
         # self.save_model(self.model, 'model')

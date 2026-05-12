@@ -8,7 +8,10 @@ import sys
 
 import numpy as np
 import torch
-import wandb
+try:
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
 
 from config import get_args, resolve_device
 from dataset.mcfl_synthetic import make_mcfl_clients
@@ -300,7 +303,7 @@ def run_mcfl(args):
         mean_adapted_test_acc = sum(adapted_test_accs) / len(adapted_test_accs)
         mean_raw_test_acc = sum(raw_test_accs) / len(raw_test_accs)
 
-        if getattr(args, 'wandb', False):
+        if getattr(args, 'wandb', False) and wandb is not None:
             wandb.log({
                 "round": rnd,
                 "test_acc": mean_adapted_test_acc,
@@ -469,6 +472,7 @@ def run_ifca(args):
     from clients.clientIFCA import IFCAClient
     from models.ifca_models import IFCALinearRegressor, IFCAMLPClassifier, IFCASmallCNN
     from servers.serverIFCA import IFCAServer
+    from utils.data_utils import build_temporal_drift_tensor_clients, set_global_drift_round
 
     set_seed(args.ifca_seed)
 
@@ -528,6 +532,19 @@ def run_ifca(args):
 
     if args.ifca_mode == "local":
         cluster_models = [copy.deepcopy(cluster_models[0]) for _ in range(len(raw_clients))]
+
+    if getattr(args, 'drift_type', 'none') != 'none':
+        raw_clients, _ = build_temporal_drift_tensor_clients(
+            raw_clients,
+            drift_type=getattr(args, 'drift_type', 'none'),
+            drift_every=getattr(args, 'drift_every', 5),
+            noise_step=getattr(args, 'drift_noise_step', 0.01),
+            noise_max=getattr(args, 'drift_noise_max', 0.10),
+            rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+            drift_interval=getattr(args, 'drift_interval', 25),
+            swap_spec=getattr(args, 'drift_swap_clients', ''),
+        )
+
     clients = [IFCAClient(client_id=i, data=data, task=task, device=args.device) for i, data in enumerate(raw_clients)]
     server = IFCAServer(
         cluster_models=[model.to(args.device) for model in cluster_models],
@@ -555,6 +572,7 @@ def run_ifca(args):
         server.warmstart_clusters(assignments=assignments, lr=args.local_learning_rate, local_epochs=args.ifca_tau, rounds=args.ifca_init_rounds)
 
     initial_s_t = time.time()
+    set_global_drift_round(0)
     initial = server.evaluate()
     initial_cluster = "n/a" if initial["cluster_acc"] < 0 else f"{initial['cluster_acc']:.4f}"
     print(f"Round -01 | train_loss={initial['train_loss']:.4f} | cluster_acc={initial_cluster} | assignments={initial['assignment_hist']}")
@@ -574,6 +592,7 @@ def run_ifca(args):
             wandb.log({"round": -1, "test_acc": initial['test_acc'], "train_loss": initial['train_loss']})
 
     for rnd in range(args.global_rounds):
+        set_global_drift_round(rnd)
         print(f"==================== Round {rnd:03d} start ====================")
         s_t = time.time()
         participating_clients = select_fractional_clients(clients, args.join_ratio, args.ifca_seed + rnd)
@@ -690,7 +709,7 @@ def run_server_base(server_cls, args):
 
 
 def run(args):
-    if getattr(args, 'wandb', False):
+    if getattr(args, 'wandb', False) and wandb is not None:
         wandb.init(
             project="FedZoo",
             name=f"{args.algorithm}_{args.dataset}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -710,7 +729,7 @@ def run(args):
     else: #fedavg
         run_fedavg(args)
         
-    if getattr(args, 'wandb', False):
+    if getattr(args, 'wandb', False) and wandb is not None:
         wandb.finish()
 
 

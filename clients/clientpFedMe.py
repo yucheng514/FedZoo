@@ -1,5 +1,6 @@
 import copy
 import time
+import warnings
 import numpy as np
 import torch
 from clients.clientBase import Client
@@ -75,8 +76,20 @@ class clientpFedMe(Client):
                     self._load_parameters(self.model, self.local_params)
                     output = self.model(x)
                     loss = self.loss(output, y)
+
+                    # Check for NaN loss before backprop
+                    if not torch.isfinite(loss):
+                        warnings.warn(
+                            f"Client {self.id} detected non-finite loss during inner loop; skipping this update.",
+                            RuntimeWarning,
+                        )
+                        self.optimizer.zero_grad(set_to_none=True)
+                        continue
+
                     self.optimizer.zero_grad(set_to_none=True)
                     loss.backward()
+                    # Gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
                     self.optimizer.step_pfedme(self.local_params, self.device)
                     self.personalized_params = self._clone_parameters(self.model.parameters())
 

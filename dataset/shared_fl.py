@@ -1,9 +1,10 @@
 import os
 
 import torch
-from torch.utils.data import ConcatDataset, TensorDataset
+from torch.utils.data import ConcatDataset
 
 from utils.data_utils import canonical_dataset_name, read_client_data
+from utils.data_utils import DriftDataset, build_partner_map_from_swap_spec
 
 
 class SharedTensorClient:
@@ -129,6 +130,7 @@ def make_partitioned_cfl_data(args):
     client_data = []
     test_sets = []
     all_train_ds = []
+    all_test_ds = []
     for cid in range(args.num_clients):
         train_samples = read_client_data(args.dataset, cid, is_train=True, few_shot=args.few_shot)
         test_samples = read_client_data(args.dataset, cid, is_train=False, few_shot=args.few_shot)
@@ -136,6 +138,7 @@ def make_partitioned_cfl_data(args):
         test_x, test_y = _stack_samples(test_samples, flatten=False)
         from torch.utils.data import TensorDataset
         all_train_ds.append(TensorDataset(train_x, train_y))
+        all_test_ds.append(TensorDataset(test_x, test_y))
         client_data.append(
             {
                 "train": TensorDataset(train_x, train_y),
@@ -143,5 +146,33 @@ def make_partitioned_cfl_data(args):
             }
         )
         test_sets.append(TensorDataset(test_x, test_y))
+
+    if getattr(args, 'drift_type', 'none') != 'none':
+        partner_map = build_partner_map_from_swap_spec(getattr(args, 'drift_swap_clients', ''))
+        for cid, data in enumerate(client_data):
+            data["train"] = DriftDataset(
+                data["train"],
+                client_id=cid,
+                drift_type=getattr(args, 'drift_type', 'none'),
+                drift_every=getattr(args, 'drift_every', 5),
+                noise_step=getattr(args, 'drift_noise_step', 0.01),
+                noise_max=getattr(args, 'drift_noise_max', 0.10),
+                rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+                drift_interval=getattr(args, 'drift_interval', 25),
+                partner_map=partner_map,
+                all_client_data=all_train_ds,
+            )
+            data["eval"] = DriftDataset(
+                data["eval"],
+                client_id=cid,
+                drift_type=getattr(args, 'drift_type', 'none'),
+                drift_every=getattr(args, 'drift_every', 5),
+                noise_step=getattr(args, 'drift_noise_step', 0.01),
+                noise_max=getattr(args, 'drift_noise_max', 0.10),
+                rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+                drift_interval=getattr(args, 'drift_interval', 25),
+                partner_map=partner_map,
+                all_client_data=all_test_ds,
+            )
 
     return client_data, ConcatDataset(test_sets)

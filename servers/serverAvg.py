@@ -1,5 +1,8 @@
 import time
-import wandb
+try:
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
 # from flcore.servers.serverbase import Server
 # from threading import Thread
 #
@@ -34,7 +37,7 @@ class FedAvg(Server):
                 print("\nEvaluate global model")
                 # 先评估全局模型
                 self.evaluate()
-                if getattr(self.args, 'wandb', False) and len(self.rs_test_acc) > 0:
+                if getattr(self.args, 'wandb', False) and wandb is not None and len(self.rs_test_acc) > 0:
                     wandb.log({
                         "round": i,
                         "test_acc": self.rs_test_acc[-1],

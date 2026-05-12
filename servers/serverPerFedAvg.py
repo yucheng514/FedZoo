@@ -1,9 +1,12 @@
 import copy
 import time
-import numpy as np
-import wandb
+try:
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
 from servers.serverBase import Server
 from clients.clientPerFedAvg import clientPerFedAvg
+from utils.data_utils import set_global_drift_round
 
 
 class serverPerFedAvg(Server):
@@ -22,6 +25,7 @@ class serverPerFedAvg(Server):
     def train(self):
         """Per-FedAvg 训练循环"""
         for i in range(self.global_rounds + 1):
+            set_global_drift_round(i)
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()
@@ -85,7 +89,7 @@ class serverPerFedAvg(Server):
         else:
             loss.append(train_loss)
 
-        if getattr(self.args, 'wandb', False) and round_idx is not None:
+        if getattr(self.args, 'wandb', False) and wandb is not None and round_idx is not None:
             wandb.log({
                 "round": round_idx,
                 "test_acc": test_acc,

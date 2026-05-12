@@ -5,6 +5,7 @@ import h5py
 import copy
 import time
 import random
+from pathlib import Path
 from utils.data_utils import read_client_data
 # from utils.dlg import DLG
 #
@@ -84,7 +85,8 @@ class Server(object):
     def select_slow_clients(self, slow_rate):
         slow_clients = [False for i in range(self.num_clients)]
         idx = [i for i in range(self.num_clients)]
-        idx_ = np.random.choice(idx, int(slow_rate * self.num_clients))
+        k = int(slow_rate * self.num_clients)
+        idx_ = random.sample(idx, k) if k > 0 else []
         for i in idx_:
             slow_clients[i] = True
 
@@ -103,7 +105,7 @@ class Server(object):
         # else:
         #     self.current_num_join_clients = self.num_join_clients
         self.current_num_join_clients = self.num_join_clients
-        selected_clients = list(np.random.choice(self.clients, self.current_num_join_clients, replace=False))
+        selected_clients = random.sample(self.clients, self.current_num_join_clients)
 
         return selected_clients
 
@@ -193,10 +195,10 @@ class Server(object):
     def save_item(self, item, item_name):
         if not os.path.exists(self.save_folder_name):
             os.makedirs(self.save_folder_name)
-        torch.save(item, os.path.join(self.save_folder_name, "server_" + item_name + ".pt"))
+        torch.save(item, Path(self.save_folder_name) / f"server_{item_name}.pt")
 
     def load_item(self, item_name):
-        return torch.load(os.path.join(self.save_folder_name, "server_" + item_name + ".pt"))
+        return torch.load(Path(self.save_folder_name) / f"server_{item_name}.pt")
 
     def test_metrics(self):
         if self.eval_new_clients and self.num_new_clients > 0:
@@ -243,6 +245,35 @@ class Server(object):
         accs = [a / n for a, n in zip(stats[2], stats[1])]
         aucs = [a / n for a, n in zip(stats[3], stats[1])]
 
+        # Check for NaN and Inf values
+        if not np.isfinite(test_acc):
+            import warnings
+            warnings.warn(
+                f"Non-finite test accuracy detected ({test_acc}); replacing with 0.0",
+                RuntimeWarning,
+            )
+            test_acc = 0.0
+
+        if not np.isfinite(test_auc):
+            import warnings
+            warnings.warn(
+                f"Non-finite test AUC detected ({test_auc}); replacing with 0.0",
+                RuntimeWarning,
+            )
+            test_auc = 0.0
+
+        if not np.isfinite(train_loss):
+            import warnings
+            warnings.warn(
+                f"Non-finite train loss detected ({train_loss}); replacing with 0.0",
+                RuntimeWarning,
+            )
+            train_loss = 0.0
+
+        # Replace NaN values in accs and aucs
+        accs = [0.0 if not np.isfinite(a) else a for a in accs]
+        aucs = [0.0 if not np.isfinite(a) else a for a in aucs]
+
         if acc == None:
             self.rs_test_acc.append(test_acc)
         else:
@@ -281,7 +312,7 @@ class Server(object):
                 else:
                     return False
             elif div_value is not None:
-                find_div = len(acc_ls) > 1 and np.std(acc_ls[-top_cnt:]) < div_value
+                find_div = len(acc_ls) > 1 and np.std(acc_ls) < div_value
                 if find_div:
                     pass
                 else:

@@ -5,8 +5,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from clients.clientMCFL import MCFLClient
 from dataset.shared_fl import has_partitioned_data
-from utils.data_utils import canonical_dataset_name
-from utils.data_utils import read_client_data
+from utils.data_utils import DriftDataset, build_partner_map_from_swap_spec, canonical_dataset_name, read_client_data
 
 
 IMAGE_DATASETS = {"MNIST", "CIFAR10", "Cifar10", "EMNIST"}
@@ -126,35 +125,67 @@ def _make_real_clients(args):
     )
     inferred_input_dim = None
     label_to_index = {}
+    all_train_datasets = []
+    all_test_datasets = []
 
     for cid in range(args.num_clients):
         train_samples = read_client_data(dataset_name, cid, is_train=True, few_shot=args.few_shot)
-        dataset, feature_dim = _stack_samples_for_backbone(
+        train_dataset, feature_dim = _stack_samples_for_backbone(
             train_samples,
             use_cnn=use_cnn,
             dataset_name=dataset_name,
             label_to_index=label_to_index,
         )
-        if dataset is None:
+        if train_dataset is None:
             raise ValueError(f"Dataset {dataset_name} is not image-like for MCFL.")
+        all_train_datasets.append(train_dataset)
 
         if not use_cnn and inferred_input_dim is None:
             inferred_input_dim = feature_dim
 
-        support_loader, query_loader = _build_loaders_from_dataset(
-            dataset=dataset,
-            batch_size=args.batch_size,
-            support_ratio=args.mcfl_support_ratio,
-            seed=args.mcfl_seed + cid,
-            num_workers=getattr(args, 'mcfl_num_workers', 0),
-            pin_memory=(getattr(args, 'mcfl_client_device_resolved', args.device) == 'cuda'),
-        )
         test_samples = read_client_data(dataset_name, cid, is_train=False, few_shot=args.few_shot)
         test_dataset, _ = _stack_samples_for_backbone(
             test_samples,
             use_cnn=use_cnn,
             dataset_name=dataset_name,
             label_to_index=label_to_index,
+        )
+        all_test_datasets.append(test_dataset)
+
+    partner_map = build_partner_map_from_swap_spec(getattr(args, 'drift_swap_clients', ''))
+
+    for cid in range(args.num_clients):
+        train_dataset = DriftDataset(
+            all_train_datasets[cid],
+            client_id=cid,
+            drift_type=getattr(args, 'drift_type', 'none'),
+            drift_every=getattr(args, 'drift_every', 5),
+            noise_step=getattr(args, 'drift_noise_step', 0.01),
+            noise_max=getattr(args, 'drift_noise_max', 0.10),
+            rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+            drift_interval=getattr(args, 'drift_interval', 25),
+            partner_map=partner_map,
+            all_client_data=all_train_datasets,
+        )
+        support_loader, query_loader = _build_loaders_from_dataset(
+            dataset=train_dataset,
+            batch_size=args.batch_size,
+            support_ratio=args.mcfl_support_ratio,
+            seed=args.mcfl_seed + cid,
+            num_workers=getattr(args, 'mcfl_num_workers', 0),
+            pin_memory=(getattr(args, 'mcfl_client_device_resolved', args.device) == 'cuda'),
+        )
+        test_dataset = DriftDataset(
+            all_test_datasets[cid],
+            client_id=cid,
+            drift_type=getattr(args, 'drift_type', 'none'),
+            drift_every=getattr(args, 'drift_every', 5),
+            noise_step=getattr(args, 'drift_noise_step', 0.01),
+            noise_max=getattr(args, 'drift_noise_max', 0.10),
+            rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+            drift_interval=getattr(args, 'drift_interval', 25),
+            partner_map=partner_map,
+            all_client_data=all_test_datasets,
         )
         test_loader = DataLoader(
             test_dataset,
@@ -194,6 +225,7 @@ def _make_real_clients(args):
 def _make_synthetic_clients(args):
     clients = []
     total_samples = max(args.mcfl_samples_per_client, args.batch_size * 8)
+    raw_datasets = []
 
     for cid in range(args.num_clients):
         group = cid % args.mcfl_true_groups
@@ -206,7 +238,23 @@ def _make_synthetic_clients(args):
         logits = x @ shared_basis + class_bias + 0.15 * torch.randn(total_samples, args.num_classes)
         y = logits.argmax(dim=1)
 
-        dataset = TensorDataset(x, y)
+        raw_datasets.append(TensorDataset(x, y))
+
+    partner_map = build_partner_map_from_swap_spec(getattr(args, 'drift_swap_clients', ''))
+
+    for cid in range(args.num_clients):
+        dataset = DriftDataset(
+            raw_datasets[cid],
+            client_id=cid,
+            drift_type=getattr(args, 'drift_type', 'none'),
+            drift_every=getattr(args, 'drift_every', 5),
+            noise_step=getattr(args, 'drift_noise_step', 0.01),
+            noise_max=getattr(args, 'drift_noise_max', 0.10),
+            rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+            drift_interval=getattr(args, 'drift_interval', 25),
+            partner_map=partner_map,
+            all_client_data=raw_datasets,
+        )
         support_loader, query_loader = _build_loaders_from_dataset(
             dataset=dataset,
             batch_size=args.batch_size,

@@ -1,5 +1,6 @@
 import copy
 import time
+import warnings
 import numpy as np
 import torch
 from clients.clientBase import Client
@@ -48,8 +49,20 @@ class clientPerFedAvg(Client):
 
                 output = self.model(x)
                 loss = self.loss(output, y)
+
+                # Check for NaN loss before backprop
+                if not torch.isfinite(loss):
+                    warnings.warn(
+                        f"Client {self.id} detected non-finite loss in step 1; skipping this batch.",
+                        RuntimeWarning,
+                    )
+                    self.optimizer.zero_grad()
+                    continue
+
                 self.optimizer.zero_grad()
                 loss.backward()
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
                 self.optimizer.step()
 
                 # 第二步：在后半批数据上更新，计算梯度
@@ -67,7 +80,21 @@ class clientPerFedAvg(Client):
                 self.optimizer.zero_grad()
                 output = self.model(x)
                 loss = self.loss(output, y)
+
+                # Check for NaN loss before backprop
+                if not torch.isfinite(loss):
+                    warnings.warn(
+                        f"Client {self.id} detected non-finite loss in step 2; skipping this batch.",
+                        RuntimeWarning,
+                    )
+                    # Restore model parameters
+                    for old_param, new_param in zip(self.model.parameters(), temp_model):
+                        old_param.data = new_param.data.clone()
+                    continue
+
                 loss.backward()
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
 
                 # 恢复模型参数到第一步之前
                 for old_param, new_param in zip(self.model.parameters(), temp_model):

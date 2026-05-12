@@ -2,6 +2,7 @@ import numpy as np
 import os
 import torch
 from collections import defaultdict
+from torch.utils.data import Dataset
 
 
 _DATASET_ALIASES = {
@@ -124,7 +125,7 @@ def build_partner_map_from_swap_spec(swap_spec):
     return partner_map
 
 
-class DriftDataset(torch.utils.data.Dataset):
+class DriftDataset(Dataset):
     """Wraps a dataset (list of (x,y) or TensorDataset) and applies temporal drift.
 
     Mild drift: progressively add Gaussian noise or rotate images based on GLOBAL_DRIFT_ROUND.
@@ -229,3 +230,137 @@ class DriftDataset(torch.utils.data.Dataset):
                 pass
 
         return x, y
+
+
+def _apply_mild_tensor(x, drift_step, noise_step, noise_max, rotation_step):
+    if drift_step <= 0:
+        return x
+    out = x
+    if noise_step > 0.0:
+        noise_std = min(noise_max, drift_step * noise_step)
+        if noise_std > 0.0:
+            out = out + noise_std * torch.randn_like(out)
+    if abs(rotation_step) > 0.0 and torch.is_tensor(out) and out.ndim >= 2:
+        angle = drift_step * rotation_step
+        if abs(angle) > 0.0:
+            try:
+                from torchvision.transforms.functional import rotate
+                out = rotate(out, angle=angle)
+            except Exception:
+                pass
+    return out
+
+
+class TemporalDriftTensorClientData:
+    """A light-weight proxy for tensor-based clients (e.g. IFCA).
+
+    It exposes the same attributes as the original client data object but
+    dynamically swaps whole client tensors when heavy drift is active.
+    """
+
+    def __init__(self, train_x, train_y, test_x, test_y, client_id=0, cluster_id=-1,
+                 drift_type='none', drift_every=5, noise_step=0.01, noise_max=0.10,
+                 rotation_step=5.0, drift_interval=25, partner_map=None, all_client_data=None):
+        self._base_train_x = train_x
+        self._base_train_y = train_y
+        self._base_test_x = test_x
+        self._base_test_y = test_y
+        self.client_id = int(client_id)
+        self.cluster_id = int(cluster_id)
+        self.drift_type = str(drift_type)
+        self.drift_every = max(1, int(drift_every))
+        self.noise_step = float(noise_step)
+        self.noise_max = float(noise_max)
+        self.rotation_step = float(rotation_step)
+        self.drift_interval = int(drift_interval)
+        self.partner_map = dict(partner_map) if partner_map else {}
+        self.all_client_data = all_client_data
+
+    def _partner_payload(self, train=True):
+        if not self.partner_map or not self.all_client_data:
+            return None
+        if self.client_id not in self.partner_map:
+            return None
+        partner_id = int(self.partner_map[self.client_id])
+        if partner_id < 0 or partner_id >= len(self.all_client_data):
+            return None
+        partner = self.all_client_data[partner_id]
+        if train:
+            return partner[0], partner[1]
+        return partner[2], partner[3]
+
+    def _current_payload(self, train=True):
+        if train:
+            x, y = self._base_train_x, self._base_train_y
+        else:
+            x, y = self._base_test_x, self._base_test_y
+
+        if self.drift_type in ('heavy', 'both') and self.drift_interval > 0:
+            if (GLOBAL_DRIFT_ROUND // self.drift_interval) % 2 == 1:
+                partner_payload = self._partner_payload(train=train)
+                if partner_payload is not None:
+                    x, y = partner_payload
+
+        if self.drift_type in ('slight', 'both') and torch.is_tensor(x):
+            drift_step = GLOBAL_DRIFT_ROUND // self.drift_every
+            x = _apply_mild_tensor(x, drift_step, self.noise_step, self.noise_max, self.rotation_step)
+
+        return x, y
+
+    @property
+    def train_x(self):
+        return self._current_payload(train=True)[0]
+
+    @property
+    def train_y(self):
+        return self._current_payload(train=True)[1]
+
+    @property
+    def test_x(self):
+        return self._current_payload(train=False)[0]
+
+    @property
+    def test_y(self):
+        return self._current_payload(train=False)[1]
+
+    @property
+    def train_samples(self):
+        return int(self.train_x.shape[0])
+
+    @property
+    def test_samples(self):
+        return int(self.test_x.shape[0])
+
+
+def build_temporal_drift_tensor_clients(raw_clients, drift_type='none', drift_every=5,
+                                        noise_step=0.01, noise_max=0.10, rotation_step=5.0,
+                                        drift_interval=25, swap_spec='', cluster_attr='cluster_id'):
+    """Wrap a list of tensor-based client data objects with the same drift policy."""
+    base_pool = [
+        (client.train_x, client.train_y, client.test_x, client.test_y)
+        for client in raw_clients
+    ]
+    partner_map = build_partner_map_from_swap_spec(swap_spec)
+    wrapped_clients = []
+    for cid, client in enumerate(raw_clients):
+        wrapped_clients.append(
+            TemporalDriftTensorClientData(
+                train_x=client.train_x,
+                train_y=client.train_y,
+                test_x=client.test_x,
+                test_y=client.test_y,
+                client_id=cid,
+                cluster_id=int(getattr(client, cluster_attr, -1)),
+                drift_type=drift_type,
+                drift_every=drift_every,
+                noise_step=noise_step,
+                noise_max=noise_max,
+                rotation_step=rotation_step,
+                drift_interval=drift_interval,
+                partner_map=partner_map,
+                all_client_data=base_pool,
+            )
+        )
+    return wrapped_clients, partner_map
+
+

@@ -1,11 +1,14 @@
 import copy
 import time
-import numpy as np
 import h5py
-import wandb
+try:
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
 from pathlib import Path
 from servers.serverBase import Server
 from clients.clientpFedMe import clientpFedMe
+from utils.data_utils import set_global_drift_round
 
 
 class serverpFedMe(Server):
@@ -29,6 +32,7 @@ class serverpFedMe(Server):
     def train(self):
         """pFedMe 训练循环"""
         for i in range(self.global_rounds + 1):
+            set_global_drift_round(i)
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()
@@ -103,7 +107,7 @@ class serverpFedMe(Server):
         self.rs_train_acc_per.append(train_acc)
         self.rs_train_loss_per.append(train_loss)
 
-        if getattr(self.args, 'wandb', False) and round_idx is not None:
+        if getattr(self.args, 'wandb', False) and wandb is not None and round_idx is not None:
             wandb.log({
                 "round": round_idx,
                 "test_acc": test_acc,

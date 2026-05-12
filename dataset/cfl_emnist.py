@@ -1,12 +1,10 @@
-from pathlib import Path
-
 import numpy as np
-import torch
 from torchvision import datasets, transforms
 
 from dataset.download_paths import resolve_torchvision_root
 from dataset.shared_fl import has_partitioned_data, make_partitioned_cfl_data
 from utils.cfl_data_utils import CustomSubset, split_noniid
+from utils.data_utils import DriftDataset, build_partner_map_from_swap_spec
 
 
 def _client_transform(client_id, rotation_clients, rotation_degrees):
@@ -44,4 +42,23 @@ def make_cfl_partition(args):
         client_data.append(subset)
 
     test_data = CustomSubset(data, test_idcs, transforms.Compose([transforms.ToTensor()]))
+
+    if getattr(args, 'drift_type', 'none') != 'none':
+        partner_map = build_partner_map_from_swap_spec(getattr(args, 'drift_swap_clients', ''))
+        base_client_data = list(client_data)
+        client_data = [
+            DriftDataset(
+                subset,
+                client_id=cid,
+                drift_type=getattr(args, 'drift_type', 'none'),
+                drift_every=getattr(args, 'drift_every', 5),
+                noise_step=getattr(args, 'drift_noise_step', 0.01),
+                noise_max=getattr(args, 'drift_noise_max', 0.10),
+                rotation_step=getattr(args, 'drift_rotation_step', 5.0),
+                drift_interval=getattr(args, 'drift_interval', 25),
+                partner_map=partner_map,
+                all_client_data=base_client_data,
+            )
+            for cid, subset in enumerate(base_client_data)
+        ]
     return client_data, test_data, client_idcs
