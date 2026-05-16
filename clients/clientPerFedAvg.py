@@ -112,7 +112,15 @@ class clientPerFedAvg(Client):
     def train_one_step(self):
         """单步训练（用于评估时的一步微调）"""
         trainloader = self.load_train_data(self.batch_size)
-        x, y = next(iter(trainloader))
+        try:
+            x, y = next(iter(trainloader))
+        except StopIteration:
+            warnings.warn(
+                f"Client {self.id} has no training batches for one-step evaluation; skipping.",
+                RuntimeWarning,
+            )
+            return
+
         if type(x) == type([]):
             x[0] = x[0].to(self.device)
         else:
@@ -120,6 +128,12 @@ class clientPerFedAvg(Client):
         y = y.to(self.device)
         output = self.model(x)
         loss = self.loss(output, y)
+        if not torch.isfinite(loss):
+            warnings.warn(
+                f"Client {self.id} detected non-finite loss during one-step evaluation; skipping update.",
+                RuntimeWarning,
+            )
+            return
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()

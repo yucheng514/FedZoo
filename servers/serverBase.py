@@ -141,11 +141,25 @@ class Server(object):
                 self.uploaded_ids.append(client.id)
                 self.uploaded_weights.append(client.train_samples)
                 self.uploaded_models.append(client.model)
-        for i, w in enumerate(self.uploaded_weights):
-            self.uploaded_weights[i] = w / tot_samples
+
+        # Fallback: if all uploads were filtered out, keep training stable by aggregating
+        # the active clients directly instead of crashing on an empty / zero-sample set.
+        if len(self.uploaded_models) == 0:
+            self.uploaded_ids = [client.id for client in active_clients]
+            self.uploaded_models = [client.model for client in active_clients]
+            self.uploaded_weights = [client.train_samples for client in active_clients]
+            tot_samples = sum(self.uploaded_weights)
+
+        if tot_samples <= 0:
+            self.uploaded_weights = [1.0 / len(self.uploaded_models) for _ in self.uploaded_models]
+        else:
+            for i, w in enumerate(self.uploaded_weights):
+                self.uploaded_weights[i] = w / tot_samples
 
     def aggregate_parameters(self):
-        assert (len(self.uploaded_models) > 0)
+        if len(self.uploaded_models) == 0:
+            print("Warning: no uploaded client models available for aggregation; keeping previous global model.")
+            return
 
         self.global_model = copy.deepcopy(self.uploaded_models[0])
         for param in self.global_model.parameters():

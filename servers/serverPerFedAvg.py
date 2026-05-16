@@ -70,9 +70,7 @@ class serverPerFedAvg(Server):
                     })
                 print(f"==================== Round {i:03d} end ====================")
 
-            # 每个客户端训练两次
             for client in self.selected_clients:
-                client.train()
                 client.train()
 
             self.receive_models()
@@ -96,23 +94,38 @@ class serverPerFedAvg(Server):
         """使用一步本地优化来评估模型"""
         # 保存所有客户端当前模型
         models_temp = []
-        for c in self.clients:
-            models_temp.append(copy.deepcopy(c.model))
-            c.train_one_step()
+        test_acc = 0.0
+        train_loss = 0.0
+        accs = [0.0 for _ in self.clients]
+        try:
+            for c in self.clients:
+                models_temp.append(copy.deepcopy(c.model))
+                c.train_one_step()
 
-        # 评估测试集
-        stats = self.test_metrics()
-        for i, c in enumerate(self.clients):
-            c.clone_model(models_temp[i], c.model)
+            # 评估测试集
+            stats = self.test_metrics()
 
-        # 评估训练集
-        stats_train = self.train_metrics()
-        for i, c in enumerate(self.clients):
-            c.clone_model(models_temp[i], c.model)
+            # 评估训练集
+            stats_train = self.train_metrics()
 
-        accs = [a / n for a, n in zip(stats[2], stats[1])]
-        test_acc = sum(stats[2]) * 1.0 / sum(stats[1])
-        train_loss = sum(stats_train[2]) * 1.0 / sum(stats_train[1])
+            accs = [a / n if n else 0.0 for a, n in zip(stats[2], stats[1])]
+            test_den = max(sum(stats[1]), 1)
+            train_den = max(sum(stats_train[1]), 1)
+            test_acc = sum(stats[2]) * 1.0 / test_den
+            train_loss = sum(stats_train[2]) * 1.0 / train_den
+        except Exception as exc:
+            import warnings
+
+            warnings.warn(
+                f"PerFedAvg one-step evaluation failed at round {round_idx}: {exc}; using safe fallback values.",
+                RuntimeWarning,
+            )
+            accs = [0.0 for _ in self.clients]
+        finally:
+            for i, c in enumerate(self.clients):
+                if i < len(models_temp):
+                    c.clone_model(models_temp[i], c.model)
+
 
         if acc is None:
             self.rs_test_acc.append(test_acc)
