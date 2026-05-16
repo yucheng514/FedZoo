@@ -27,14 +27,25 @@ class FedAvg(Server):
 
 
     def train(self):
+        prev_drift_state = False  # Track previous drift state to detect transitions
+
         for i in range(self.global_rounds+1):
             drift_interval = getattr(self.args, 'drift_interval', 25)
-            if getattr(self.args, 'drift_type', 'none') in ('heavy', 'both') and drift_interval > 0:
-                if i > 0 and i % drift_interval == 0:
-                    print(f"Round {i}: Triggering Heavy Concept Drift!")
+            drift_type = getattr(self.args, 'drift_type', 'none')
 
             # update global drift round so clients using DriftDataset will change over time
             set_global_drift_round(i)
+
+            # Only print drift state changes (not every interval)
+            if drift_type in ('heavy', 'both') and drift_interval > 0 and i > 0:
+                # Calculate current drift state: True if samples are being swapped
+                current_drift_state = (i // drift_interval) % 2 == 1
+                if current_drift_state != prev_drift_state:
+                    if current_drift_state:
+                        print(f"Round {i}: Starting Heavy Concept Drift (swapping client data)")
+                    else:
+                        print(f"Round {i}: Stopping Heavy Concept Drift (reverting to original data)")
+                    prev_drift_state = current_drift_state
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()
