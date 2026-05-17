@@ -7,6 +7,7 @@ import time
 import random
 from pathlib import Path
 from utils.data_utils import read_client_data
+from utils.mcfl_utils import sanitize_model_
 # from utils.dlg import DLG
 #
 #
@@ -139,6 +140,7 @@ class Server(object):
             if client_time_cost <= self.time_threthold:
                 tot_samples += client.train_samples
                 self.uploaded_ids.append(client.id)
+                sanitize_model_(client.model)
                 self.uploaded_weights.append(client.train_samples)
                 self.uploaded_models.append(client.model)
 
@@ -167,6 +169,8 @@ class Server(object):
 
         for w, client_model in zip(self.uploaded_weights, self.uploaded_models):
             self.add_parameters(w, client_model)
+
+        sanitize_model_(self.global_model)
 
     def add_parameters(self, w, client_model):
         for server_param, client_param in zip(self.global_model.parameters(), client_model.parameters()):
@@ -261,27 +265,12 @@ class Server(object):
 
         # Check for NaN and Inf values
         if not np.isfinite(test_acc):
-            import warnings
-            warnings.warn(
-                f"Non-finite test accuracy detected ({test_acc}); replacing with 0.0",
-                RuntimeWarning,
-            )
             test_acc = 0.0
 
         if not np.isfinite(test_auc):
-            import warnings
-            warnings.warn(
-                f"Non-finite test AUC detected ({test_auc}); replacing with 0.0",
-                RuntimeWarning,
-            )
             test_auc = 0.0
 
         if not np.isfinite(train_loss):
-            import warnings
-            warnings.warn(
-                f"Non-finite train loss detected ({train_loss}); replacing with 0.0",
-                RuntimeWarning,
-            )
             train_loss = 0.0
 
         # Replace NaN values in accs and aucs

@@ -1,5 +1,4 @@
 import copy
-import warnings
 import torch
 import torch.nn as nn
 import numpy as np
@@ -7,6 +6,7 @@ from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data, build_partner_map_from_swap_spec
+from utils.mcfl_utils import sanitize_model_
 
 
 class Client(object):
@@ -120,10 +120,6 @@ class Client(object):
     def _safe_auc(self, y_true, y_prob):
         y_prob = np.asarray(y_prob)
         if not np.isfinite(y_prob).all():
-            warnings.warn(
-                f"Client {self.id} produced non-finite scores during AUC evaluation; replacing NaN/Inf with finite values.",
-                RuntimeWarning,
-            )
             finite_vals = y_prob[np.isfinite(y_prob)]
             if finite_vals.size == 0:
                 y_prob = np.zeros_like(y_prob)
@@ -139,11 +135,7 @@ class Client(object):
 
         try:
             return metrics.roc_auc_score(y_true, y_prob, average='micro')
-        except ValueError as exc:
-            warnings.warn(
-                f"Client {self.id} AUC computation failed ({exc}); returning 0.0 instead.",
-                RuntimeWarning,
-            )
+        except ValueError:
             return 0.0
 #
 #     def clone_model(self, model, target):
@@ -159,6 +151,7 @@ class Client(object):
         testloaderfull = self.load_test_data()
         # self.model = self.load_model('model')
         # self.model.to(self.device)
+        sanitize_model_(self.model)
         self.model.eval()
 
         test_acc = 0
@@ -177,10 +170,6 @@ class Client(object):
 
                 # Check for NaN/Inf in output
                 if not torch.isfinite(output).all():
-                    warnings.warn(
-                        f"Client {self.id} produced non-finite model output; replacing with zeros.",
-                        RuntimeWarning,
-                    )
                     output = torch.where(torch.isfinite(output), output, torch.zeros_like(output))
 
                 test_acc += (torch.sum(torch.argmax(output, dim=1) == y)).item()
@@ -209,6 +198,7 @@ class Client(object):
         trainloader = self.load_train_data()
         # self.model = self.load_model('model')
         # self.model.to(self.device)
+        sanitize_model_(self.model)
         self.model.eval()
 
         train_num = 0
@@ -226,10 +216,6 @@ class Client(object):
                 loss_item = loss.item()
                 # Check for NaN or Inf in loss
                 if not np.isfinite(loss_item):
-                    warnings.warn(
-                        f"Client {self.id} produced non-finite loss ({loss_item}); skipping this batch.",
-                        RuntimeWarning,
-                    )
                     loss_item = 0.0
                 losses += loss_item * y.shape[0]
 

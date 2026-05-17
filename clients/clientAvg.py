@@ -1,10 +1,11 @@
 # import copy
 # import torch
 # import numpy as np
+import copy
 import time
-import warnings
 import torch
 from clients.clientBase import Client
+from utils.mcfl_utils import sanitize_model_
 
 class clientAVG(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
@@ -16,6 +17,7 @@ class clientAVG(Client):
         self.model.train()
 
         start_time = time.time()
+        last_good_state = copy.deepcopy(self.model.state_dict())
 
         max_local_epochs = self.local_epochs
 #         if self.train_slow:
@@ -31,14 +33,18 @@ class clientAVG(Client):
                 # if self.train_slow:
                 #     time.sleep(0.1 * np.abs(np.random.rand()))
                 output = self.model(x)
+                if not torch.isfinite(output).all():
+                    self.model.load_state_dict(last_good_state, strict=True)
+                    sanitize_model_(self.model)
+                    self.optimizer.zero_grad(set_to_none=True)
+                    continue
+
                 loss = self.loss(output, y)
 
                 # Check for NaN loss before backprop
                 if not torch.isfinite(loss):
-                    warnings.warn(
-                        f"Client {self.id} detected non-finite loss ({loss.item()}) at epoch {epoch}, batch {i}; skipping update.",
-                        RuntimeWarning,
-                    )
+                    self.model.load_state_dict(last_good_state, strict=True)
+                    sanitize_model_(self.model)
                     self.optimizer.zero_grad()
                     continue
 
@@ -49,6 +55,8 @@ class clientAVG(Client):
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
 
                 self.optimizer.step()
+                sanitize_model_(self.model)
+                last_good_state = copy.deepcopy(self.model.state_dict())
 
         # self.model.cpu()
 
